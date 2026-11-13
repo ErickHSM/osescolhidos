@@ -13,7 +13,7 @@ import { GoalCalendar } from "./GoalCalendar";
 
 type Item = Tables<"items">;
 type Filter = "all" | "note" | "audio" | "file";
-type AudioCategory = Tables<"audio_categories">;
+type AudioCategory = { id: string; name: string };
 const defaultCategories = ["Orações", "Recaídas", "Testemunhos", "Estudos bíblicos", "Louvores", "Outros"];
 const categoryLabel = (value: string | null) => value || "Sem categoria";
 
@@ -46,14 +46,24 @@ export function Vault({ session }: { session: Session }) {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const loadCategories = useCallback(async () => {
-    const { data, error } = await supabase.from("audio_categories").select("*").eq("user_id", uid).order("created_at", { ascending: true });
+    const { data, error } = await supabase.auth.getUser();
     if (error) { toast.error("Não foi possível carregar categorias: " + error.message); return; }
-    if (!data?.length) {
-      const seeded = await supabase.from("audio_categories").insert(defaultCategories.map((name) => ({ user_id: uid, name }))).select("*");
-      if (seeded.error) { toast.error("Não foi possível preparar categorias iniciais"); return; }
-      setCategories(seeded.data ?? []); setSelectedAudioCategory(seeded.data?.[0]?.name ?? "");
-    } else { setCategories(data); setSelectedAudioCategory((current) => current || data[0]?.name || ""); }
-  }, [uid]);
+    const saved = data.user.user_metadata?.audio_categories;
+    let list: AudioCategory[] = Array.isArray(saved)
+      ? saved.map((entry: unknown, index: number) => typeof entry === "string"
+          ? { id: `legacy-${index}-${entry}`, name: entry }
+          : entry && typeof entry === "object" && "name" in entry
+            ? { id: String((entry as { id?: string }).id || crypto.randomUUID()), name: String((entry as { name: string }).name) }
+            : null).filter((entry): entry is AudioCategory => !!entry && !!entry.name.trim())
+      : [];
+    if (!list.length) {
+      list = defaultCategories.map((name) => ({ id: crypto.randomUUID(), name }));
+      const savedDefaults = await supabase.auth.updateUser({ data: { audio_categories: list } });
+      if (savedDefaults.error) { toast.error("Não foi possível preparar categorias: " + savedDefaults.error.message); return; }
+    }
+    setCategories(list);
+    setSelectedAudioCategory((current) => current || list[0]?.name || "");
+  }, []);
 
   const load = useCallback(async () => {
     const { data, error } = await supabase.from("items").select("*").order("pinned", { ascending: false }).order("created_at", { ascending: false });
@@ -143,29 +153,43 @@ export function Vault({ session }: { session: Session }) {
     toast.success("Áudio atualizado"); setEditingAudio(null); await load();
   }
 
+  async function persistCategories(next: AudioCategory[]) {
+    const { error } = await supabase.auth.updateUser({ data: { audio_categories: next } });
+    if (error) { toast.error("Não foi possível salvar categorias: " + error.message); return false; }
+    setCategories(next);
+    return true;
+  }
+
   async function saveCategory() {
-    const name = categoryName.trim(); if (!name) { toast.error("Digite um nome para a categoria"); return; }
-    if (categories.some((c) => c.name.toLocaleLowerCase() === name.toLocaleLowerCase() && c.id !== editingCategory?.id)) { toast.error("Essa categoria já existe"); return; }
-    const result = editingCategory
-      ? await supabase.from("audio_categories").update({ name }).eq("id", editingCategory.id).eq("user_id", uid)
-      : await supabase.from("audio_categories").insert({ user_id: uid, name });
-    if (result.error) { toast.error("Não foi possível salvar categoria: " + result.error.message); return; }
-    if (editingCategory) { await supabase.from("items").update({ category: name }).eq("user_id", uid).eq("category", editingCategory.name); }
-    setCategoryName(""); setEditingCategory(null); await loadCategories(); await load(); toast.success("Categoria salva");
+    const name = categoryName.trim();
+    if (!name) { toast.error("Digite um nome para a categoria"); return; }
+    if (categories.some((c) => c.name.toLocaleLowerCase() === name.toLocaleLowerCase() && c.id !== editingCategory?.id)) {
+      toast.error("Essa categoria já existe"); return;
+    }
+    const next = editingCategory
+      ? categories.map((c) => c.id === editingCategory.id ? { ...c, name } : c)
+      : [...categories, { id: crypto.randomUUID(), name }];
+    if (editingCategory) {
+      const { error } = await supabase.from("items").update({ category: name }).eq("user_id", uid).eq("category", editingCategory.name);
+      if (error) { toast.error("Não foi possível atualizar os áudios: " + error.message); return; }
+      if (selectedAudioCategory === editingCategory.name) setSelectedAudioCategory(name);
+      if (categoryFilter === editingCategory.name) setCategoryFilter(name);
+    }
+    if (!await persistCategories(next)) return;
+    setCategoryName(""); setEditingCategory(null); await load(); toast.success("Categoria salva");
   }
 
   async function deleteCategory(category: AudioCategory) {
     if (category.name === "Outros") { toast.error("A categoria Outros é necessária como destino"); return; }
-    if (!confirm(`Excluir a categoria \"${category.name}\"? Os áudios serão movidos para Outros.`)) return;
+    if (!confirm(`Excluir a categoria "${category.name}"? Os áudios serão movidos para Outros.`)) return;
     const fallback = categories.find((c) => c.name === "Outros");
-    if (!fallback) { toast.error("Crie a categoria Outros antes de excluir esta"); return; }
+    if (!fallback) { toast.error("A categoria Outros não foi encontrada"); return; }
     const moved = await supabase.from("items").update({ category: fallback.name }).eq("user_id", uid).eq("category", category.name);
-    if (moved.error) { toast.error("Não foi possível mover os áudios"); return; }
-    const { error } = await supabase.from("audio_categories").delete().eq("id", category.id).eq("user_id", uid);
-    if (error) { toast.error("Não foi possível excluir a categoria"); return; }
+    if (moved.error) { toast.error("Não foi possível mover os áudios: " + moved.error.message); return; }
+    if (!await persistCategories(categories.filter((c) => c.id !== category.id))) return;
     if (selectedAudioCategory === category.name) setSelectedAudioCategory(fallback.name);
     if (categoryFilter === category.name) setCategoryFilter("all");
-    await loadCategories(); await load(); toast.success("Categoria excluída");
+    await load(); toast.success("Categoria excluída");
   }
 
   async function remove(i: Item) {
@@ -184,9 +208,9 @@ export function Vault({ session }: { session: Session }) {
   ];
 
   return (
-    <div className="min-h-screen w-full md:pl-64"><aside className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-border/70 bg-[#10151d]/95 p-5 backdrop-blur-2xl transition-transform md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}><Logo /><p className="mb-3 mt-10 px-3 text-[10px] font-bold uppercase tracking-[.22em] text-muted-foreground">Workspace</p><button onClick={() => {setActiveView("vault");setSidebarOpen(false);}} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${activeView === "vault" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><LayoutGrid className="h-4 w-4"/> Meu cofre</button><button onClick={() => {setActiveView("goals");setSidebarOpen(false);}} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${activeView === "goals" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><CalendarDays className="h-4 w-4"/> Metas</button><div className="mt-8 flex items-center justify-between px-3"><span className="text-[10px] font-bold uppercase tracking-[.22em] text-muted-foreground">Categorias</span><button onClick={() => {setEditingCategory(null);setCategoryName("");setCategoryManagerOpen(true);}} aria-label="Criar categoria" className="rounded-lg p-1.5 text-muted-foreground hover:bg-white/10 hover:text-primary"><FolderPlus className="h-4 w-4"/></button></div><div className="mt-2 space-y-1">{categories.map((category) => <button key={category.id} onClick={() => {setActiveView("vault");setFilter("audio");setCategoryFilter(category.name);setSidebarOpen(false);}} className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm ${categoryFilter === category.name && filter === "audio" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><span className="flex min-w-0 items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full bg-primary/70"/><span className="truncate">{category.name}</span></span><span className="text-xs opacity-60">{items.filter((i)=>i.kind==="audio"&&i.category===category.name).length}</span></button>)}</div><div className="mt-auto border-t border-border/70 pt-4"><p className="truncate px-3 text-xs text-muted-foreground">{session.user.email}</p><button onClick={() => supabase.auth.signOut()} className="mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-muted-foreground hover:bg-white/5"><LogOut className="h-4 w-4"/> Sair</button></div></aside>{sidebarOpen && <button onClick={()=>setSidebarOpen(false)} aria-label="Fechar menu" className="fixed inset-0 z-30 bg-black/60 md:hidden"/>}<main className="mx-auto w-full max-w-7xl px-3 pb-20 pt-3 sm:px-6 sm:pt-6 md:px-8">
+    <div className="min-h-screen w-full md:pl-64"><aside className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-border/70 bg-[#10151d]/95 p-5 backdrop-blur-2xl transition-transform md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}><div className="flex justify-center"><Logo /></div><p className="mb-3 mt-10 px-3 text-[10px] font-bold uppercase tracking-[.22em] text-muted-foreground">Workspace</p><button onClick={() => {setActiveView("vault");setSidebarOpen(false);}} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${activeView === "vault" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><LayoutGrid className="h-4 w-4"/> Meu cofre</button><button onClick={() => {setActiveView("goals");setSidebarOpen(false);}} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${activeView === "goals" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><CalendarDays className="h-4 w-4"/> Metas</button><div className="mt-8 flex items-center justify-between px-3"><span className="text-[10px] font-bold uppercase tracking-[.22em] text-muted-foreground">Categorias</span><button onClick={() => {setEditingCategory(null);setCategoryName("");setCategoryManagerOpen(true);}} aria-label="Criar categoria" className="rounded-lg p-1.5 text-muted-foreground hover:bg-white/10 hover:text-primary"><FolderPlus className="h-4 w-4"/></button></div><div className="mt-2 space-y-1">{categories.map((category) => <button key={category.id} onClick={() => {setActiveView("vault");setFilter("audio");setCategoryFilter(category.name);setSidebarOpen(false);}} className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm ${categoryFilter === category.name && filter === "audio" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><span className="flex min-w-0 items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full bg-primary/70"/><span className="truncate">{category.name}</span></span><span className="text-xs opacity-60">{items.filter((i)=>i.kind==="audio"&&i.category===category.name).length}</span></button>)}</div><div className="mt-auto border-t border-border/70 pt-4"><p className="truncate px-3 text-xs text-muted-foreground">{session.user.email}</p><button onClick={() => supabase.auth.signOut()} className="mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-muted-foreground hover:bg-white/5"><LogOut className="h-4 w-4"/> Sair</button></div></aside>{sidebarOpen && <button onClick={()=>setSidebarOpen(false)} aria-label="Fechar menu" className="fixed inset-0 z-30 bg-black/60 md:hidden"/>}<main className="mx-auto w-full max-w-6xl px-3 pb-20 pt-3 sm:px-6 sm:pt-6 md:px-8">
       <header className="glass sticky top-2 z-20 flex items-center justify-between gap-2 rounded-2xl px-3 py-2.5 sm:top-4 sm:gap-3 sm:px-4 sm:py-3">
-        <div className="flex items-center gap-2"><button onClick={() => setSidebarOpen(true)} aria-label="Abrir menu" className="rounded-xl p-2 text-muted-foreground hover:bg-white/5 md:hidden"><Menu className="h-5 w-5"/></button><div className="md:hidden"><Logo /></div></div>
+        <div className="flex items-center gap-2"><button onClick={() => setSidebarOpen(true)} aria-label="Abrir menu" className="rounded-xl p-2 text-muted-foreground hover:bg-white/5 md:hidden"><Menu className="h-5 w-5"/></button><div className="md:hidden"><Logo size="sm" /></div></div>
         {activeView === "vault" && <div className="relative hidden max-w-sm flex-1 sm:block">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar no cofre…" className="h-10 rounded-xl pl-9" />
@@ -252,7 +276,7 @@ export function Vault({ session }: { session: Session }) {
         )}
       </section>
 
-      <Dialog open={categoryManagerOpen} onOpenChange={setCategoryManagerOpen}><DialogContent className="glass max-h-[85vh] overflow-y-auto rounded-3xl sm:max-w-lg"><DialogHeader><DialogTitle>Gerenciar categorias</DialogTitle></DialogHeader><div className="flex gap-2"><Input value={categoryName} onChange={(e)=>setCategoryName(e.target.value)} placeholder={editingCategory ? "Editar nome da categoria" : "Nome da nova categoria"} className="h-11 rounded-xl"/><Button onClick={()=>void saveCategory()} className="rounded-xl"><FolderPlus className="h-4 w-4"/></Button></div><div className="space-y-2">{categories.map((category)=><div key={category.id} className="flex items-center justify-between rounded-xl border border-border/70 bg-background/30 px-3 py-2.5"><span className="text-sm font-medium">{category.name}</span><div className="flex gap-1"><button onClick={()=>{setEditingCategory(category);setCategoryName(category.name);}} className="rounded-lg p-2 text-muted-foreground hover:bg-white/10" aria-label="Editar categoria"><Pencil className="h-4 w-4"/></button><button onClick={()=>void deleteCategory(category)} className="rounded-lg p-2 text-muted-foreground hover:bg-rose-500/10 hover:text-rose-400" aria-label="Excluir categoria"><Trash2 className="h-4 w-4"/></button></div></div>)}</div><p className="text-xs text-muted-foreground">Ao renomear, os áudios acompanham o novo nome. Ao excluir, eles são movidos para Outros.</p></DialogContent></Dialog>
+      <Dialog open={categoryManagerOpen} onOpenChange={(open) => { setCategoryManagerOpen(open); if (!open) { setEditingCategory(null); setCategoryName(""); } }}><DialogContent className="glass fixed left-1/2 top-1/2 grid max-h-[85dvh] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-5 overflow-y-auto rounded-3xl border border-white/10 p-5 sm:p-7"><DialogHeader className="text-center"><DialogTitle className="text-xl">Gerenciar categorias</DialogTitle></DialogHeader><div className="flex flex-col gap-2 sm:flex-row"><Input value={categoryName} onChange={(e)=>setCategoryName(e.target.value)} placeholder={editingCategory ? "Editar nome da categoria" : "Nome da nova categoria"} className="h-11 rounded-xl"/><Button onClick={()=>void saveCategory()} className="h-11 shrink-0 rounded-xl px-4"><FolderPlus className="mr-2 h-4 w-4"/>{editingCategory ? "Salvar" : "Criar"}</Button></div><div className="max-h-[42vh] space-y-2 overflow-y-auto pr-1">{categories.map((category)=><div key={category.id} className="flex min-w-0 items-center justify-between gap-3 rounded-xl border border-border/70 bg-background/30 px-3 py-2.5"><span className="min-w-0 flex-1 truncate text-sm font-medium">{category.name}</span><div className="flex gap-1"><button onClick={()=>{setEditingCategory(category);setCategoryName(category.name);}} className="rounded-lg p-2 text-muted-foreground hover:bg-white/10" aria-label="Editar categoria"><Pencil className="h-4 w-4"/></button><button onClick={()=>void deleteCategory(category)} className="rounded-lg p-2 text-muted-foreground hover:bg-rose-500/10 hover:text-rose-400" aria-label="Excluir categoria"><Trash2 className="h-4 w-4"/></button></div></div>)}</div><p className="text-center text-xs text-muted-foreground">Ao renomear, os áudios acompanham o novo nome. Ao excluir, eles são movidos para Outros.</p></DialogContent></Dialog>
       <Dialog open={!!editingAudio} onOpenChange={(open)=>{if(!open)setEditingAudio(null);}}><DialogContent className="glass rounded-3xl sm:max-w-md"><DialogHeader><DialogTitle>Editar áudio</DialogTitle></DialogHeader><div className="space-y-3"><label className="block space-y-1 text-sm"><span className="text-muted-foreground">Nome do áudio</span><Input value={audioTitle} onChange={(e)=>setAudioTitle(e.target.value)} className="h-11 rounded-xl"/></label><label className="block space-y-1 text-sm"><span className="text-muted-foreground">Categoria</span><select value={audioCategory} onChange={(e)=>setAudioCategory(e.target.value)} className="h-11 w-full rounded-xl border border-input bg-background px-3">{categories.map((category)=><option key={category.id} value={category.name}>{category.name}</option>)}</select></label><Button onClick={()=>void updateAudio()} className="w-full rounded-xl">Salvar alterações</Button></div></DialogContent></Dialog>
       <NoteDialog open={noteOpen} onOpenChange={(o) => { setNoteOpen(o); if (!o) setEditing(null); }} item={editing} onSave={saveNote} />
       <RecorderDialog open={recOpen} onOpenChange={setRecOpen} onSave={async (b, n) => { await uploadBlob(b, n, "audio"); setRecOpen(false); }} />
