@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, ChevronLeft, ChevronRight, LoaderCircle } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, LoaderCircle, Volume2, Pause, Play, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type BibleBook = { name: string; slug: string; chapters: number; testament: "Antigo Testamento" | "Novo Testamento" };
@@ -22,12 +22,52 @@ export function BibleReader() {
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [isCoverOpen, setIsCoverOpen] = useState(false);
   const [coverOpening, setCoverOpening] = useState(false);
+  const [speechStatus, setSpeechStatus] = useState<"idle" | "playing" | "paused">("idle");
+  const [speechRate, setSpeechRate] = useState(1);
   const selectedBook = books.find((book) => book.slug === bookSlug) ?? books[0];
   const oldTestament = useMemo(() => books.filter((book) => book.testament === "Antigo Testamento"), []);
   const newTestament = useMemo(() => books.filter((book) => book.testament === "Novo Testamento"), []);
   const pages = useMemo(() => { const verses = data?.verses ?? []; const result: BibleVerse[][] = []; for (let i = 0; i < verses.length; i += 12) result.push(verses.slice(i, i + 12)); return result.length ? result : [[]]; }, [data]);
   const pageCount = pages.length;
   const isLastChapter = bookSlug === books[books.length - 1].slug && chapter === selectedBook.chapters;
+  useEffect(() => () => {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      setSpeechStatus("idle");
+    }
+  }, [bookSlug, chapter]);
+
+  function stopReading() {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
+    setSpeechStatus("idle");
+  }
+
+  function startReading() {
+    if (!data?.verses?.length || typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(data.verses.map((verse) => verse.t).join(" "));
+    utterance.lang = "pt-BR";
+    utterance.rate = speechRate;
+    const voices = window.speechSynthesis.getVoices();
+    const voice = voices.find((item) => item.lang.toLowerCase() === "pt-br") || voices.find((item) => item.lang.toLowerCase().startsWith("pt"));
+    if (voice) utterance.voice = voice;
+    utterance.onend = () => setSpeechStatus("idle");
+    utterance.onerror = () => setSpeechStatus("idle");
+    window.speechSynthesis.speak(utterance);
+    setSpeechStatus("playing");
+  }
+
+  function toggleReading() {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    if (speechStatus === "playing") { window.speechSynthesis.pause(); setSpeechStatus("paused"); }
+    else if (speechStatus === "paused") { window.speechSynthesis.resume(); setSpeechStatus("playing"); }
+    else startReading();
+  }
+
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
@@ -106,7 +146,12 @@ export function BibleReader() {
         <label className="space-y-1 text-sm"><span className="text-muted-foreground">Livro</span><select value={bookSlug} onChange={(e) => changeBook(e.target.value)} className="h-11 w-full rounded-xl border border-input bg-background px-3">{oldTestament.map((b) => <option key={b.slug} value={b.slug}>{b.name}</option>)}<option disabled>──────────</option>{newTestament.map((b) => <option key={b.slug} value={b.slug}>{b.name}</option>)}</select></label>
         <label className="space-y-1 text-sm"><span className="text-muted-foreground">Capítulo</span><select value={chapter} onChange={(e) => setChapter(Number(e.target.value))} className="h-11 w-full rounded-xl border border-input bg-background px-3">{Array.from({length:selectedBook.chapters},(_,i)=>i+1).map((n)=><option key={n} value={n}>{n}</option>)}</select></label>
       </section>
-      <div className="bible-book mx-auto max-w-5xl rounded-[22px] p-3 sm:p-5">
+      <div {isCoverOpen && <div className="mx-auto mb-4 flex max-w-5xl flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/20 p-3 text-[#f5e6cd]">
+          <div className="flex items-center gap-2"><Volume2 className="h-5 w-5 text-[#d9bd82]"/><div><p className="text-sm font-semibold">Ouvir a Bíblia</p><p className="text-xs text-[#e8d6b8]/75">{speechStatus === "playing" ? "Lendo este capítulo…" : speechStatus === "paused" ? "Leitura pausada" : "Escute este capítulo em voz alta"}</p></div></div>
+          <div className="flex flex-wrap items-center gap-2"><label className="flex items-center gap-2 text-xs">Velocidade<select aria-label="Velocidade da leitura" value={speechRate} onChange={(event) => setSpeechRate(Number(event.target.value))} className="rounded-lg border border-white/15 bg-[#29231d] px-2 py-1.5 text-[#f5e6cd]"><option value={0.8}>0,8×</option><option value={1}>1×</option><option value={1.2}>1,2×</option><option value={1.5}>1,5×</option></select></label>
+          <Button type="button" size="sm" onClick={toggleReading} disabled={loading || !!error || !data?.verses?.length} className="rounded-xl bg-[#b58b4c] text-[#21180e] hover:bg-[#c99d5a]">{speechStatus === "playing" ? <><Pause className="mr-1 h-4 w-4"/> Pausar</> : speechStatus === "paused" ? <><Play className="mr-1 h-4 w-4"/> Continuar</> : <><Play className="mr-1 h-4 w-4"/> Ouvir capítulo</>}</Button>
+          {speechStatus !== "idle" && <Button type="button" size="sm" variant="outline" onClick={stopReading} className="rounded-xl border-white/20 text-[#f5e6cd] hover:bg-white/10"><Square className="mr-1 h-3.5 w-3.5"/> Parar</Button>}</div></div>}
+        <div className="bible-book mx-auto max-w-5xl rounded-[22px] p-3 sm:p-5">
         <div className="hidden overflow-hidden rounded-lg sm:grid sm:grid-cols-2 sm:gap-[2px]">
           {[pages[Math.min(pageIndex,pageCount-1)]??[],pages[Math.min(pageIndex+1,pageCount-1)]??[]].map((verses,side)=>(
             <article key={pageIndex+"-"+side} className={`bible-paper min-h-[520px] px-7 py-9 lg:px-10 ${flipDirection==="next"?"bible-page-next":"bible-page-previous"} ${side===0?"rounded-l-md":"rounded-r-md"}`}>
