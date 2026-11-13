@@ -23,6 +23,7 @@ export type Database = {
           kind: string
           mime_type: string | null
           pinned: boolean
+          sort_order: number
           size_bytes: number | null
           title: string
           updated_at: string
@@ -36,6 +37,7 @@ export type Database = {
           kind?: string
           mime_type?: string | null
           pinned?: boolean
+          sort_order?: number
           size_bytes?: number | null
           title?: string
           updated_at?: string
@@ -49,6 +51,7 @@ export type Database = {
           kind?: string
           mime_type?: string | null
           pinned?: boolean
+          sort_order?: number
           size_bytes?: number | null
           title?: string
           updated_at?: string
