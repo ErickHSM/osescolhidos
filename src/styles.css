@@ -62,7 +62,10 @@
   --shadow-glow: 0 0 0 1px oklch(0.86 0.13 210 / 30%), 0 0 40px -8px oklch(0.86 0.13 210 / 55%);
 }
 
-@layer base {\n  html, body, #root { width: 100%; max-width: 100%; overflow-x: clip; }\n  * { scrollbar-width: none; }\n  *::-webkit-scrollbar { display: none; width: 0; height: 0; }
+@layer base {
+  html, body, #root { width: 100%; max-width: 100%; overflow-x: clip; }
+  * { scrollbar-width: none; }
+  *::-webkit-scrollbar { display: none; width: 0; height: 0; }
   * { border-color: var(--color-border); }
   html, body { font-family: var(--font-sans); }
   body {
