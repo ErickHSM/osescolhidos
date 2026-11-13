@@ -375,7 +375,7 @@ export function Vault({ session }: { session: Session }) {
             Nada aqui ainda. Crie uma anotação, grave um áudio ou envie um arquivo.
           </div>
         ) : (
-          {filter === "audio" && categoryFilter === "all" ? (
+          filter === "audio" && categoryFilter === "all" ? (
             <div className="col-span-full space-y-8">
               {audioGroups.length === 0 ? <div className="glass rounded-2xl p-10 text-center text-muted-foreground">Nenhum áudio encontrado.</div> : audioGroups.map((group) => (
                 <section key={group.id} className="space-y-3">
@@ -387,7 +387,7 @@ export function Vault({ session }: { session: Session }) {
                 </section>
               ))}
             </div>
-          ) : visible.map(renderItemCard)}
+          ) : visible.map(renderItemCard)
         )}
       </section>
 
