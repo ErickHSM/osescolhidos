@@ -157,9 +157,6 @@ export function BibleReader() {
     setSearchResults(ranked.map((entry) => entry.item));
   }
   async function openSearchResult(result: BibleTopicResult) {
-    const response = await fetch(`https://free.bible/bible/pt/${result.bookSlug}/${result.chapter}.json`);
-    if (!response.ok) return;
-    const chapterData = await response.json() as BibleChapterResponse;
     const verseIndex = Math.max(0, (result.verse - 1) / 12);
     const desktop = typeof window !== "undefined" && window.innerWidth >= 640;
     setBookSlug(result.bookSlug);
