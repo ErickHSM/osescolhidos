@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { toast } from "sonner";
-import { FileText, Mic, Upload, Search, LogOut, Pin, Trash2, Download, Square, StickyNote, AudioLines, Paperclip, LayoutGrid, GripVertical, ChevronUp, ChevronsUp } from "lucide-react";
+import { FileText, Mic, Upload, Search, LogOut, Pin, Trash2, Download, Square, StickyNote, AudioLines, Paperclip, LayoutGrid, GripVertical, ChevronUp, ChevronsUp, CalendarDays, Target } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Logo } from "./Logo";
+import { GoalCalendar } from "./GoalCalendar";
 
 type Item = Tables<"items">;
 type Filter = "all" | "note" | "audio" | "file";
@@ -28,6 +29,7 @@ export function Vault({ session }: { session: Session }) {
   const [editing, setEditing] = useState<Item | null>(null);
   const [recOpen, setRecOpen] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [activeView, setActiveView] = useState<"vault" | "goals">("vault");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -130,15 +132,21 @@ export function Vault({ session }: { session: Session }) {
     <div className="mx-auto max-w-6xl px-4 pb-24 pt-6 sm:px-6">
       <header className="glass sticky top-4 z-20 flex items-center justify-between gap-3 rounded-2xl px-4 py-3">
         <Logo />
-        <div className="relative hidden max-w-sm flex-1 sm:block">
+        {activeView === "vault" && <div className="relative hidden max-w-sm flex-1 sm:block">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar no cofre…" className="h-10 rounded-xl pl-9" />
-        </div>
+        </div>}
         <Button variant="ghost" size="sm" onClick={() => supabase.auth.signOut()} className="rounded-xl text-muted-foreground">
           <LogOut className="h-4 w-4" /> <span className="hidden sm:inline">Sair</span>
         </Button>
       </header>
 
+      <nav className="mt-5 flex gap-2 rounded-2xl glass p-1.5">
+        <button onClick={() => setActiveView("vault")} className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${activeView === "vault" ? "bg-primary text-primary-foreground glow" : "text-muted-foreground hover:text-foreground"}`}><LayoutGrid className="h-4 w-4" /> Meu cofre</button>
+        <button onClick={() => setActiveView("goals")} className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${activeView === "goals" ? "bg-primary text-primary-foreground glow" : "text-muted-foreground hover:text-foreground"}`}><CalendarDays className="h-4 w-4" /> Metas</button>
+      </nav>
+
+      {activeView === "vault" ? <>
       <div className="relative mt-4 sm:hidden">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar no cofre…" className="h-10 rounded-xl pl-9" />
@@ -189,6 +197,7 @@ export function Vault({ session }: { session: Session }) {
 
       <NoteDialog open={noteOpen} onOpenChange={(o) => { setNoteOpen(o); if (!o) setEditing(null); }} item={editing} onSave={saveNote} />
       <RecorderDialog open={recOpen} onOpenChange={setRecOpen} onSave={async (b, n) => { await uploadBlob(b, n, "audio"); setRecOpen(false); }} />
+      </> : <GoalCalendar session={session} />}
     </div>
   );
 }
