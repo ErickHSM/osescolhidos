@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { toast } from "sonner";
-import { FileText, Mic, Upload, Search, LogOut, Pin, Trash2, Download, Square, StickyNote, AudioLines, Paperclip, LayoutGrid, GripVertical, ChevronUp, ChevronDown, ChevronsUp, CalendarDays, FolderPlus, Pencil, Tags, Menu, Camera, UserCircle2, Award } from "lucide-react";
+import { FileText, Mic, Upload, Search, LogOut, Pin, Trash2, Download, Square, StickyNote, AudioLines, Paperclip, LayoutGrid, GripVertical, ChevronUp, ChevronDown, ChevronsUp, CalendarDays, FolderPlus, Pencil, Tags, Menu, Camera, UserCircle2, Award, BookOpen, BookMarked } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Logo } from "./Logo";
 import { GoalCalendar } from "./GoalCalendar";
+import { BibleReader } from "./BibleReader";
 
 type Item = Tables<"items">;
 type Filter = "all" | "note" | "audio" | "file";
@@ -58,7 +59,7 @@ export function Vault({ session }: { session: Session }) {
   const currentRank = [...rankTiers].reverse().find((tier) => journeyDays >= tier.days) || rankTiers[0];
   const nextRank = rankTiers.find((tier) => tier.days > journeyDays);
   const rankProgress = nextRank ? Math.min(100, Math.round(((journeyDays - currentRank.days) / (nextRank.days - currentRank.days)) * 100)) : 100;
-  const [activeView, setActiveView] = useState<"vault" | "goals" | "pdfs">("vault");
+  const [activeView, setActiveView] = useState<"vault" | "goals" | "pdfs" | "verses" | "bible">("vault");
   const fileRef = useRef<HTMLInputElement>(null);
   const pdfRef = useRef<HTMLInputElement>(null);
 
@@ -126,6 +127,8 @@ export function Vault({ session }: { session: Session }) {
     file: items.filter((i) => i.kind === "file").length,
   }), [items]);
 
+  const verseItems = useMemo(() => items.filter((item) => item.kind === "note" && item.category === "Versículos" && (!q.trim() || item.title.toLowerCase().includes(q.trim().toLowerCase()) || (item.content ?? "").toLowerCase().includes(q.trim().toLowerCase()))), [items, q]);
+
   const pdfItems = useMemo(() => items.filter((item) =>
     item.kind === "file" && (item.mime_type === "application/pdf" || item.title.toLowerCase().endsWith(".pdf")) &&
     (!q.trim() || item.title.toLowerCase().includes(q.trim().toLowerCase()))
@@ -179,10 +182,10 @@ export function Vault({ session }: { session: Session }) {
 
   async function saveNote(title: string, content: string) {
     if (editing) {
-      const { error } = await supabase.from("items").update({ title, content, updated_at: new Date().toISOString() }).eq("id", editing.id);
+      const { error } = await supabase.from("items").update({ title, content, ...(activeView === "verses" ? { category: "Versículos" } : {}), updated_at: new Date().toISOString() }).eq("id", editing.id);
       if (error) { toast.error(error.message); return; }
     } else {
-      const { error } = await supabase.from("items").insert({ user_id: uid, kind: "note", title: title || "Sem título", content });
+      const { error } = await supabase.from("items").insert({ user_id: uid, kind: "note", title: title || "Sem título", content, category: activeView === "verses" ? "Versículos" : "Anotações" });
       if (error) { toast.error(error.message); return; }
     }
     toast.success("Anotação salva");
@@ -333,7 +336,7 @@ export function Vault({ session }: { session: Session }) {
   }
 
   return (
-    <div className="min-h-screen w-full md:pl-64"><aside className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-white/10 bg-[rgba(34,36,40,0.68)] p-5 shadow-[12px_0_40px_rgba(0,0,0,0.22)] backdrop-blur-2xl backdrop-saturate-150 transition-transform md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}><div className="flex justify-center"><Logo /></div><p className="mb-3 mt-10 px-3 text-[10px] font-bold uppercase tracking-[.22em] text-muted-foreground">Workspace</p><button onClick={() => {setActiveView("vault");setSidebarOpen(false);}} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${activeView === "vault" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><LayoutGrid className="h-4 w-4"/> Meu cofre</button><button onClick={() => {setActiveView("goals");setSidebarOpen(false);}} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${activeView === "goals" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><CalendarDays className="h-4 w-4"/> Metas</button><button onClick={() => {setActiveView("pdfs");setSidebarOpen(false);setQ("");}} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${activeView === "pdfs" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><FileText className="h-4 w-4"/> PDFs <span className="ml-auto text-xs opacity-60">{items.filter((item)=>item.kind==="file"&&(item.mime_type==="application/pdf"||item.title.toLowerCase().endsWith(".pdf"))).length}</span></button><div className="mt-8 flex items-center justify-between px-3"><span className="text-[10px] font-bold uppercase tracking-[.22em] text-muted-foreground">Categorias</span><button onClick={() => {setActiveView("vault");setEditingCategory(null);setCategoryName("");setCategoryManagerOpen(true);}} aria-label="Criar categoria" className="rounded-lg p-1.5 text-muted-foreground hover:bg-white/10 hover:text-primary"><FolderPlus className="h-4 w-4"/></button></div><div className="mt-2 space-y-1">{categories.map((category) => <button key={category.id} onClick={() => {setActiveView("vault");setFilter("audio");setCategoryFilter(category.name);setSidebarOpen(false);}} className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm ${categoryFilter === category.name && filter === "audio" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><span className="flex min-w-0 items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full bg-primary/70"/><span className="truncate">{category.name}</span></span><span className="text-xs opacity-60">{items.filter((i)=>i.kind==="audio"&&i.category===category.name).length}</span></button>)}</div><div className="mt-auto border-t border-border/70 pt-4"><p className="truncate px-3 text-xs text-muted-foreground">{session.user.email}</p><button onClick={() => supabase.auth.signOut()} className="mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-muted-foreground hover:bg-white/5"><LogOut className="h-4 w-4"/> Sair</button></div></aside>{sidebarOpen && <button onClick={()=>setSidebarOpen(false)} aria-label="Fechar menu" className="fixed inset-0 z-30 bg-black/60 md:hidden"/>}<main className="mx-auto w-full max-w-6xl px-3 pb-20 pt-3 sm:px-6 sm:pt-6 md:px-8">
+    <div className="min-h-screen w-full md:pl-64"><aside className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-white/10 bg-[rgba(34,36,40,0.68)] p-5 shadow-[12px_0_40px_rgba(0,0,0,0.22)] backdrop-blur-2xl backdrop-saturate-150 transition-transform md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}><div className="flex justify-center"><Logo /></div><p className="mb-3 mt-10 px-3 text-[10px] font-bold uppercase tracking-[.22em] text-muted-foreground">Workspace</p><button onClick={() => {setActiveView("vault");setSidebarOpen(false);}} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${activeView === "vault" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><LayoutGrid className="h-4 w-4"/> Meu cofre</button><button onClick={() => {setActiveView("goals");setSidebarOpen(false);}} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${activeView === "goals" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><CalendarDays className="h-4 w-4"/> Metas</button><button onClick={() => {setActiveView("pdfs");setSidebarOpen(false);setQ("");}} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${activeView === "pdfs" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><FileText className="h-4 w-4"/> PDFs <span className="ml-auto text-xs opacity-60">{items.filter((item)=>item.kind==="file"&&(item.mime_type==="application/pdf"||item.title.toLowerCase().endsWith(".pdf"))).length}</span></button><button onClick={() => {setActiveView("verses");setSidebarOpen(false);setQ("");}} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${activeView === "verses" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><BookMarked className="h-4 w-4"/> Versículos <span className="ml-auto text-xs opacity-60">{items.filter((item)=>item.kind==="note"&&item.category==="Versículos").length}</span></button><button onClick={() => {setActiveView("bible");setSidebarOpen(false);setQ("");}} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${activeView === "bible" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><BookOpen className="h-4 w-4"/> Bíblia</button><div className="mt-8 flex items-center justify-between px-3"><span className="text-[10px] font-bold uppercase tracking-[.22em] text-muted-foreground">Categorias</span><button onClick={() => {setActiveView("vault");setEditingCategory(null);setCategoryName("");setCategoryManagerOpen(true);}} aria-label="Criar categoria" className="rounded-lg p-1.5 text-muted-foreground hover:bg-white/10 hover:text-primary"><FolderPlus className="h-4 w-4"/></button></div><div className="mt-2 space-y-1">{categories.map((category) => <button key={category.id} onClick={() => {setActiveView("vault");setFilter("audio");setCategoryFilter(category.name);setSidebarOpen(false);}} className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm ${categoryFilter === category.name && filter === "audio" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><span className="flex min-w-0 items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full bg-primary/70"/><span className="truncate">{category.name}</span></span><span className="text-xs opacity-60">{items.filter((i)=>i.kind==="audio"&&i.category===category.name).length}</span></button>)}</div><div className="mt-auto border-t border-border/70 pt-4"><p className="truncate px-3 text-xs text-muted-foreground">{session.user.email}</p><button onClick={() => supabase.auth.signOut()} className="mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-muted-foreground hover:bg-white/5"><LogOut className="h-4 w-4"/> Sair</button></div></aside>{sidebarOpen && <button onClick={()=>setSidebarOpen(false)} aria-label="Fechar menu" className="fixed inset-0 z-30 bg-black/60 md:hidden"/>}<main className="mx-auto w-full max-w-6xl px-3 pb-20 pt-3 sm:px-6 sm:pt-6 md:px-8">
       <header className="glass sticky top-2 z-20 flex items-center justify-between gap-2 rounded-2xl px-3 py-2.5 sm:top-4 sm:gap-3 sm:px-4 sm:py-3">
         <div className="flex items-center gap-2"><button onClick={() => setSidebarOpen(true)} aria-label="Abrir menu" className="rounded-xl p-2 text-muted-foreground hover:bg-white/5 md:hidden"><Menu className="h-5 w-5"/></button><div className="md:hidden"><Logo size="sm" /></div></div>
         {activeView !== "goals" && <div className="relative hidden max-w-sm flex-1 sm:block">
@@ -423,7 +426,18 @@ export function Vault({ session }: { session: Session }) {
             <div className="glass col-span-full rounded-2xl p-10 text-center text-muted-foreground"><FileText className="mx-auto mb-3 h-9 w-9 opacity-60"/><p className="font-medium text-foreground">Sua biblioteca está vazia</p><p className="mt-1 text-sm">Envie um PDF para começar a ler por aqui.</p></div>
           ) : pdfItems.map((item) => <PdfCard key={item.id} item={item} onDelete={() => void remove(item)} />)}
         </section>
-      </> : <GoalCalendar session={session} />}
+      </> : activeView === "verses" ? <>
+        <section className="mx-auto mt-8 max-w-3xl text-center">
+          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary"><BookMarked className="h-7 w-7"/></div>
+          <h1 className="text-3xl font-semibold sm:text-4xl">Meus versículos</h1>
+          <p className="mt-2 text-muted-foreground">Guarde passagens bíblicas, reflexões e palavras que deseja levar com você.</p>
+          <Button onClick={() => {setEditing(null);setNoteOpen(true);}} className="glow mt-5 rounded-xl"><BookMarked className="mr-2 h-4 w-4"/> Anotar versículo</Button>
+        </section>
+        <section className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {loading ? <p className="text-muted-foreground">Carregando versículos…</p> : verseItems.length === 0 ? <div className="glass col-span-full rounded-2xl p-10 text-center text-muted-foreground"><BookMarked className="mx-auto mb-3 h-9 w-9 opacity-60"/><p className="font-medium text-foreground">Nenhum versículo salvo ainda</p><p className="mt-1 text-sm">Anote uma referência, escreva o versículo e registre sua reflexão.</p></div> : verseItems.map(renderItemCard)}
+        </section>
+        <NoteDialog open={noteOpen} onOpenChange={(open) => {setNoteOpen(open);if(!open)setEditing(null);}} item={editing} onSave={saveNote}/>
+      </> : activeView === "bible" ? <BibleReader /> : <GoalCalendar session={session} />}
     </main>{currentAudio && <div className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-4xl rounded-2xl border border-white/10 bg-[rgba(30,32,36,0.94)] p-3 shadow-2xl backdrop-blur-2xl sm:inset-x-6 sm:bottom-5 sm:p-4"><div className="flex items-center gap-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{currentAudio.title}</p><p className="text-xs text-muted-foreground">{categoryLabel(currentAudio.category)} · Reprodução contínua</p></div>{persistentAudioUrl ? <audio key={currentAudio.id} controls autoPlay src={persistentAudioUrl} onEnded={() => void toggleAudioListened(currentAudio.id, true)} className="w-[min(58%,360px)]" /> : <span className="text-xs text-muted-foreground">Carregando áudio…</span>}<button type="button" aria-label="Fechar player" onClick={() => setCurrentAudio(null)} className="rounded-lg p-2 text-muted-foreground hover:bg-white/10">×</button></div></div>}</div>
   );
 }
