@@ -13,6 +13,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 
 type Goal = Tables<"goals">;
 type GoalStatus = "pending" | "completed" | "failed";
+type Recurrence = "none" | "daily" | "weekdays" | "weekly";
+type RecurringTemplate = { id: string; title: string; description: string | null; start_date: string; frequency: Exclude<Recurrence, "none"> };
 
 const statusLabels: Record<GoalStatus, string> = {
   pending: "Pendente",
@@ -39,6 +41,7 @@ export function GoalCalendar({ session }: { session: Session }) {
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<GoalStatus>("pending");
   const [saving, setSaving] = useState(false);
+  const [recurrence, setRecurrence] = useState<Recurrence>("none");
 
   const monthStart = startOfMonth(month);
   const monthEnd = endOfMonth(month);
@@ -49,18 +52,37 @@ export function GoalCalendar({ session }: { session: Session }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [monthResult, historyResult] = await Promise.all([
-      supabase.from("goals").select("*")
-        .eq("user_id", uid)
-        .gte("goal_date", format(monthStart, "yyyy-MM-dd"))
-        .lte("goal_date", format(monthEnd, "yyyy-MM-dd"))
-        .order("goal_date", { ascending: true }),
-      supabase.from("goals").select("goal_date,status").eq("user_id", uid),
+    const [{ data: authData, error: authError }, { data: allGoals, error: goalsError }] = await Promise.all([
+      supabase.auth.getUser(),
+      supabase.from("goals").select("*").eq("user_id", uid).order("goal_date", { ascending: true }),
     ]);
-    if (monthResult.error) toast.error("Não foi possível carregar suas metas: " + monthResult.error.message);
-    if (historyResult.error) toast.error("Não foi possível calcular sua constância: " + historyResult.error.message);
-    setGoals(monthResult.data ?? []);
-    setHistory(historyResult.data ?? []);
+    if (authError) toast.error("Não foi possível carregar suas preferências: " + authError.message);
+    if (goalsError) toast.error("Não foi possível carregar suas metas: " + goalsError.message);
+    let completeGoals = allGoals ?? [];
+    const templates = (authData.user?.user_metadata?.recurring_goal_templates ?? []) as RecurringTemplate[];
+    if (!goalsError && templates.length) {
+      const monthDays = eachDayOfInterval({ start: monthStart, end: monthEnd });
+      const missing = templates.flatMap((template) => monthDays.flatMap((day) => {
+        const dateKey = format(day, "yyyy-MM-dd");
+        if (dateKey < template.start_date) return [];
+        const weekday = day.getDay();
+        const matches = template.frequency === "daily"
+          || (template.frequency === "weekdays" && weekday >= 1 && weekday <= 5)
+          || (template.frequency === "weekly" && format(day, "i") === format(new Date(template.start_date + "T12:00:00"), "i"));
+        const exists = completeGoals.some((goal) => goal.goal_date === dateKey && goal.title === template.title && goal.description === template.description);
+        return matches && !exists ? [{
+          user_id: uid, title: template.title, description: template.description,
+          goal_date: dateKey, status: "pending" as GoalStatus,
+        }] : [];
+      }));
+      if (missing.length) {
+        const { data: inserted, error: insertError } = await supabase.from("goals").insert(missing).select("*");
+        if (insertError) toast.error("Não foi possível gerar metas recorrentes: " + insertError.message);
+        else completeGoals = [...completeGoals, ...(inserted ?? [])];
+      }
+    }
+    setGoals(completeGoals.filter((goal) => goal.goal_date >= format(monthStart, "yyyy-MM-dd") && goal.goal_date <= format(monthEnd, "yyyy-MM-dd")));
+    setHistory(completeGoals.map((goal) => ({ goal_date: goal.goal_date, status: goal.status })));
     setLoading(false);
   }, [uid, monthStart.getTime(), monthEnd.getTime()]);
 
@@ -122,6 +144,7 @@ export function GoalCalendar({ session }: { session: Session }) {
     setTitle("");
     setDescription("");
     setStatus("pending");
+    setRecurrence("none");
     setDialogOpen(true);
   }
 
@@ -131,6 +154,7 @@ export function GoalCalendar({ session }: { session: Session }) {
     setTitle(goal.title);
     setDescription(goal.description ?? "");
     setStatus(goal.status as GoalStatus);
+    setRecurrence("none");
     setDialogOpen(true);
   }
 
@@ -147,9 +171,20 @@ export function GoalCalendar({ session }: { session: Session }) {
     const result = editing
       ? await supabase.from("goals").update(payload).eq("id", editing.id).eq("user_id", uid)
       : await supabase.from("goals").insert({ ...payload, user_id: uid });
+    if (result.error) { setSaving(false); toast.error("Não foi possível salvar: " + result.error.message); return; }
+    if (!editing && recurrence !== "none") {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError) { setSaving(false); toast.error("Meta criada, mas não foi possível configurar a repetição: " + authError.message); return; }
+      const current = (authData.user?.user_metadata?.recurring_goal_templates ?? []) as RecurringTemplate[];
+      const template: RecurringTemplate = {
+        id: crypto.randomUUID(), title: payload.title, description: payload.description,
+        start_date: selectedDate, frequency: recurrence,
+      };
+      const { error: metadataError } = await supabase.auth.updateUser({ data: { recurring_goal_templates: [...current, template] } });
+      if (metadataError) { setSaving(false); toast.error("Meta criada, mas não foi possível salvar a repetição: " + metadataError.message); return; }
+    }
     setSaving(false);
-    if (result.error) { toast.error("Não foi possível salvar: " + result.error.message); return; }
-    toast.success(editing ? "Meta atualizada" : "Meta criada");
+    toast.success(editing ? "Meta atualizada" : recurrence === "none" ? "Meta criada" : "Meta recorrente criada");
     setDialogOpen(false);
     await load();
   }
@@ -255,6 +290,7 @@ export function GoalCalendar({ session }: { session: Session }) {
             <Input autoFocus placeholder="Ex.: Ler 20 páginas, treinar, estudar…" value={title} onChange={(event) => setTitle(event.target.value)} className="rounded-xl" />
             <Textarea placeholder="Detalhes (opcional)" value={description} onChange={(event) => setDescription(event.target.value)} className="min-h-24 rounded-xl" />
             <label className="block space-y-1 text-sm"><span className="text-muted-foreground">Data</span><Input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} className="rounded-xl" /></label>
+            {!editing && <label className="block space-y-1 text-sm"><span className="text-muted-foreground">Repetir meta</span><select value={recurrence} onChange={(event) => setRecurrence(event.target.value as Recurrence)} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"><option value="none">Não repetir</option><option value="daily">Todos os dias</option><option value="weekdays">Dias úteis (segunda a sexta)</option><option value="weekly">Toda semana (mesmo dia)</option></select><span className="text-xs text-muted-foreground">As próximas ocorrências serão adicionadas automaticamente ao abrir cada mês.</span></label>}
             <div className="space-y-2"><p className="text-sm text-muted-foreground">Como ficou essa meta?</p><div className="grid grid-cols-3 gap-2">
               {(["pending", "completed", "failed"] as GoalStatus[]).map((value) => <button key={value} type="button" onClick={() => setStatus(value)} className={`rounded-xl border px-2 py-2 text-xs font-medium transition sm:text-sm ${status === value ? statusStyles[value] + " ring-1 ring-current" : "border-border text-muted-foreground hover:bg-accent"}`}>{statusLabels[value]}</button>)}
             </div></div>
