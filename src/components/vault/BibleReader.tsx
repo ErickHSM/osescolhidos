@@ -48,7 +48,12 @@ export function BibleReader() {
     return () => controller.abort();
   }, [bookSlug, chapter]);
 
-  function changeBook(value: string) { setBookSlug(value); setChapter(1); setPageIndex(0); }\n  function openBibleCover() {\n    if (coverOpening || isCoverOpen) return;\n    setCoverOpening(true);\n    window.setTimeout(() => { setIsCoverOpen(true); setCoverOpening(false); }, 720);\n  }
+  function changeBook(value: string) { setBookSlug(value); setChapter(1); setPageIndex(0); }
+  function openBibleCover() {
+    if (coverOpening || isCoverOpen) return;
+    setCoverOpening(true);
+    window.setTimeout(() => { setIsCoverOpen(true); setCoverOpening(false); }, 720);
+  }
   function next() {
     if (chapter < selectedBook.chapters) { setChapter((v) => v + 1); setPageIndex(0); return; }
     const index = books.findIndex((book) => book.slug === bookSlug);
@@ -84,7 +89,13 @@ export function BibleReader() {
         .bible-page-next { animation:bible-page-next .38s ease-out both; transform-origin:left center; }
         .bible-page-previous { animation:bible-page-previous .38s ease-out both; transform-origin:right center; }
         .bible-book { position:relative; perspective:1800px; transform-style:preserve-3d; background:linear-gradient(90deg,#392516,#77502e 5%,#4b301d 10%,#674326 50%,#4b301d 90%,#77502e 95%,#392516); box-shadow:0 22px 55px rgba(0,0,0,.38); }
-        .bible-cover-wrap { position:absolute; z-index:5; inset:0; perspective:1800px; transform-style:preserve-3d; pointer-events:none; }\n        .bible-cover { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; border:1px solid #c6a45e; border-radius:14px; background:radial-gradient(ellipse at 50% 42%,#713b35 0%,#542521 48%,#321411 100%); color:#f4dfaa; box-shadow:inset 0 0 0 8px rgba(205,166,91,.12),inset 0 0 35px rgba(0,0,0,.55),0 18px 40px rgba(0,0,0,.45); transform-origin:left center; transition:transform .72s cubic-bezier(.2,.75,.25,1),opacity .5s ease; backface-visibility:hidden; pointer-events:auto; cursor:pointer; }\n        .bible-cover.opening { transform:rotateY(-158deg); opacity:.15; pointer-events:none; }\n        .bible-cover-frame { position:absolute; inset:18px; border:1px solid rgba(222,190,125,.72); border-radius:8px; box-shadow:inset 0 0 0 4px rgba(222,190,125,.08); }\n        .bible-cover-spine { position:absolute; top:0; bottom:0; left:0; width:24px; background:linear-gradient(90deg,rgba(0,0,0,.5),rgba(224,181,103,.24),rgba(0,0,0,.16)); border-radius:14px 0 0 14px; }\n        .bible-cover-ornament { width:76px;height:76px;border:1px solid #d9b86f;border-radius:50%;display:grid;place-items:center;box-shadow:0 0 0 7px rgba(217,184,111,.08),0 0 25px rgba(217,184,111,.12); }\n        @media(max-width:639px){.bible-book{background:transparent;box-shadow:none;padding:0}.bible-cover{border-radius:12px;min-height:470px}.bible-cover-frame{inset:12px}}
+        .bible-cover-wrap { position:absolute; z-index:5; inset:0; perspective:1800px; transform-style:preserve-3d; pointer-events:none; }
+        .bible-cover { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; border:1px solid #c6a45e; border-radius:14px; background:radial-gradient(ellipse at 50% 42%,#713b35 0%,#542521 48%,#321411 100%); color:#f4dfaa; box-shadow:inset 0 0 0 8px rgba(205,166,91,.12),inset 0 0 35px rgba(0,0,0,.55),0 18px 40px rgba(0,0,0,.45); transform-origin:left center; transition:transform .72s cubic-bezier(.2,.75,.25,1),opacity .5s ease; backface-visibility:hidden; pointer-events:auto; cursor:pointer; }
+        .bible-cover.opening { transform:rotateY(-158deg); opacity:.15; pointer-events:none; }
+        .bible-cover-frame { position:absolute; inset:18px; border:1px solid rgba(222,190,125,.72); border-radius:8px; box-shadow:inset 0 0 0 4px rgba(222,190,125,.08); }
+        .bible-cover-spine { position:absolute; top:0; bottom:0; left:0; width:24px; background:linear-gradient(90deg,rgba(0,0,0,.5),rgba(224,181,103,.24),rgba(0,0,0,.16)); border-radius:14px 0 0 14px; }
+        .bible-cover-ornament { width:76px;height:76px;border:1px solid #d9b86f;border-radius:50%;display:grid;place-items:center;box-shadow:0 0 0 7px rgba(217,184,111,.08),0 0 25px rgba(217,184,111,.12); }
+        @media(max-width:639px){.bible-book{background:transparent;box-shadow:none;padding:0}.bible-cover{border-radius:12px;min-height:470px}.bible-cover-frame{inset:12px}}
       `}</style>
       <section className="mx-auto max-w-3xl pt-4 text-center">
         <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary"><BookOpen className="h-6 w-6"/></div>
@@ -113,7 +124,21 @@ export function BibleReader() {
           </article>
           <p className="mt-3 text-center text-[11px] text-[#e8d6b8]/80">Deslize para virar a página</p>
         </div>
-        {!isCoverOpen && <div className="bible-cover-wrap">\n          <button type="button" onClick={openBibleCover} className={`bible-cover ${coverOpening ? "opening" : ""}`} aria-label="Abrir a Bíblia Sagrada">\n            <span className="bible-cover-frame" /> <span className="bible-cover-spine" />\n            <span className="relative z-10 flex max-w-[80%] flex-col items-center text-center">\n              <span className="bible-cover-ornament"><BookOpen className="h-9 w-9" strokeWidth={1.25}/></span>\n              <span className="mt-8 font-serif text-xs uppercase tracking-[.38em] text-[#d9bd82]">A Palavra de Deus</span>\n              <span className="mt-3 font-serif text-4xl font-semibold tracking-[.08em] sm:text-5xl">BÍBLIA</span>\n              <span className="mt-2 font-serif text-lg tracking-[.24em] text-[#e4c98e]">SAGRADA</span>\n              <span className="mt-8 h-px w-28 bg-[#d9b86f]/70"/>\n              <span className="mt-5 font-serif text-sm italic text-[#d9bd82]">Antigo e Novo Testamento</span>\n              <span className="mt-10 rounded-full border border-[#d9b86f]/70 px-6 py-2.5 font-sans text-xs font-medium uppercase tracking-[.2em] text-[#f6e5bd]">Toque para abrir</span>\n            </span>\n          </button>\n        </div>}\n        <div className={`mt-3 flex items-center justify-between gap-2 px-1 text-[#f5e6cd] ${!isCoverOpen ? "invisible" : ""}`}>
+        {!isCoverOpen && <div className="bible-cover-wrap">
+          <button type="button" onClick={openBibleCover} className={`bible-cover ${coverOpening ? "opening" : ""}`} aria-label="Abrir a Bíblia Sagrada">
+            <span className="bible-cover-frame" /> <span className="bible-cover-spine" />
+            <span className="relative z-10 flex max-w-[80%] flex-col items-center text-center">
+              <span className="bible-cover-ornament"><BookOpen className="h-9 w-9" strokeWidth={1.25}/></span>
+              <span className="mt-8 font-serif text-xs uppercase tracking-[.38em] text-[#d9bd82]">A Palavra de Deus</span>
+              <span className="mt-3 font-serif text-4xl font-semibold tracking-[.08em] sm:text-5xl">BÍBLIA</span>
+              <span className="mt-2 font-serif text-lg tracking-[.24em] text-[#e4c98e]">SAGRADA</span>
+              <span className="mt-8 h-px w-28 bg-[#d9b86f]/70"/>
+              <span className="mt-5 font-serif text-sm italic text-[#d9bd82]">Antigo e Novo Testamento</span>
+              <span className="mt-10 rounded-full border border-[#d9b86f]/70 px-6 py-2.5 font-sans text-xs font-medium uppercase tracking-[.2em] text-[#f6e5bd]">Toque para abrir</span>
+            </span>
+          </button>
+        </div>}
+        <div className={`mt-3 flex items-center justify-between gap-2 px-1 text-[#f5e6cd] ${!isCoverOpen ? "invisible" : ""}`}>
           <button onClick={()=>turnPage("previous")} disabled={loading||(pageIndex===0&&bookSlug===books[0].slug&&chapter===1)} className="flex h-10 items-center gap-1 rounded-xl px-3 text-sm hover:bg-white/10 disabled:opacity-30"><ChevronLeft className="h-4 w-4"/><span className="hidden sm:inline">Página anterior</span><span className="sm:hidden">Voltar</span></button>
           <span className="text-center text-xs tabular-nums">{loading?"…":`Página ${pageIndex+1} de ${pageCount}`} · {selectedBook.name} {chapter}</span>
           <button onClick={()=>turnPage("next")} disabled={loading||(pageIndex>=pageCount-1&&isLastChapter)} className="flex h-10 items-center gap-1 rounded-xl px-3 text-sm hover:bg-white/10 disabled:opacity-30"><span className="hidden sm:inline">Próxima página</span><span className="sm:hidden">Avançar</span><ChevronRight className="h-4 w-4"/></button>
