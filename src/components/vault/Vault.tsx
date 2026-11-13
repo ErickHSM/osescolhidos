@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { toast } from "sonner";
-import { FileText, Mic, Upload, Search, LogOut, Pin, Trash2, Download, Square, StickyNote, AudioLines, Paperclip, LayoutGrid, GripVertical, ChevronUp, ChevronsUp, CalendarDays, FolderPlus, Pencil, Tags, Menu } from "lucide-react";
+import { FileText, Mic, Upload, Search, LogOut, Pin, Trash2, Download, Square, StickyNote, AudioLines, Paperclip, LayoutGrid, GripVertical, ChevronUp, ChevronDown, ChevronsUp, CalendarDays, FolderPlus, Pencil, Tags, Menu } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { Button } from "@/components/ui/button";
@@ -140,9 +140,13 @@ export function Vault({ session }: { session: Session }) {
     ordered.splice(to, 0, moved);
     const updated = ordered.map((item, index) => ({ ...item, sort_order: index }));
     setItems((current) => current.map((item) => updated.find((next) => next.id === item.id) ?? item));
-    for (const item of updated) {
-      const { error } = await supabase.from("items").update({ sort_order: item.sort_order }).eq("id", item.id).eq("user_id", uid);
-      if (error) { toast.error("Não foi possível salvar a ordem dos áudios"); await load(); return; }
+    const results = await Promise.all(updated.map((item) =>
+      supabase.from("items").update({ sort_order: item.sort_order }).eq("id", item.id).eq("user_id", uid)
+    ));
+    if (results.some((result) => result.error)) {
+      toast.error("Não foi possível salvar a ordem dos áudios");
+      await load();
+      return;
     }
   }
 
@@ -267,11 +271,12 @@ export function Vault({ session }: { session: Session }) {
           visible.map((i) => (
             <ItemCard key={i.id} item={i} categoryLabel={categoryLabel(i.category)} onPin={() => togglePin(i)} onDelete={() => remove(i)} onEditAudio={() => {setEditingAudio(i);setAudioTitle(i.title);setAudioCategory(i.category || categories[0]?.name || "");}}
               onOpen={() => { if (i.kind === "note") { setEditing(i); setNoteOpen(true); } }}
-              canReorder={filter === "audio" && categoryFilter === "all" && !q.trim() && i.kind === "audio"} dragging={draggingId === i.id}
+              canReorder={filter === "audio" && categoryFilter === "all" && !q.trim() && i.kind === "audio"} showMoveControls={i.kind === "audio"} dragging={draggingId === i.id}
               onDragStart={() => setDraggingId(i.id)} onDragEnd={() => setDraggingId(null)}
               onDrop={() => { if (draggingId) void moveAudio(draggingId, i.id); setDraggingId(null); }}
-              onMoveUp={() => { const audio = visible.filter((x) => x.kind === "audio"); const index = audio.findIndex((x) => x.id === i.id); if (index > 0) void moveAudio(i.id, audio[index - 1].id); }}
-              onMoveFirst={() => { const first = visible.find((x) => x.kind === "audio"); if (first && first.id !== i.id) void moveAudio(i.id, first.id); }} />
+              onMoveUp={() => { const audio = items.filter((x) => x.kind === "audio").sort((a, b) => a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at)); const index = audio.findIndex((x) => x.id === i.id); if (index > 0) void moveAudio(i.id, audio[index - 1].id); }}
+              onMoveDown={() => { const audio = items.filter((x) => x.kind === "audio").sort((a, b) => a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at)); const index = audio.findIndex((x) => x.id === i.id); if (index >= 0 && index < audio.length - 1) void moveAudio(i.id, audio[index + 1].id); }}
+              onMoveFirst={() => { const first = items.filter((x) => x.kind === "audio").sort((a, b) => a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at))[0]; if (first && first.id !== i.id) void moveAudio(i.id, first.id); }} />
           ))
         )}
       </section>
@@ -308,7 +313,7 @@ function useSignedUrl(path: string | null) {
   return url;
 }
 
-function ItemCard({ item, categoryLabel, onPin, onDelete, onOpen, onEditAudio, canReorder, dragging, onDragStart, onDragEnd, onDrop, onMoveUp, onMoveFirst }: { item: Item; categoryLabel: string; onPin: () => void; onDelete: () => void; onOpen: () => void; onEditAudio: () => void; canReorder: boolean; dragging: boolean; onDragStart: () => void; onDragEnd: () => void; onDrop: () => void; onMoveUp: () => void; onMoveFirst: () => void }) {
+function ItemCard({ item, categoryLabel, onPin, onDelete, onOpen, onEditAudio, canReorder, showMoveControls, dragging, onDragStart, onDragEnd, onDrop, onMoveUp, onMoveDown, onMoveFirst }: { item: Item; categoryLabel: string; onPin: () => void; onDelete: () => void; onOpen: () => void; onEditAudio: () => void; canReorder: boolean; showMoveControls: boolean; dragging: boolean; onDragStart: () => void; onDragEnd: () => void; onDrop: () => void; onMoveUp: () => void; onMoveDown: () => void; onMoveFirst: () => void }) {
   const url = useSignedUrl(item.kind === "note" ? null : item.file_path);
   const Icon = item.kind === "note" ? StickyNote : item.kind === "audio" ? AudioLines : Paperclip;
   const isImage = item.mime_type?.startsWith("image/");
@@ -321,7 +326,7 @@ function ItemCard({ item, categoryLabel, onPin, onDelete, onOpen, onEditAudio, c
           <h3 className={`truncate font-semibold ${item.kind === "note" ? "cursor-pointer" : ""}`} onClick={onOpen}>{item.title}</h3>
         </div>
         <div className="flex shrink-0 gap-1">
-          {canReorder && <><button onClick={onMoveUp} aria-label="Mover para cima" title="Mover para cima" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent"><ChevronUp className="h-4 w-4" /></button><button onClick={onMoveFirst} aria-label="Mover para o primeiro lugar" title="Mover para o primeiro lugar" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent"><ChevronsUp className="h-4 w-4" /></button></>}
+          {showMoveControls && <><button onClick={onMoveUp} aria-label="Mover áudio para cima" title="Mover para cima" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent"><ChevronUp className="h-4 w-4" /></button><button onClick={onMoveDown} aria-label="Mover áudio para baixo" title="Mover para baixo" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent"><ChevronDown className="h-4 w-4" /></button><button onClick={onMoveFirst} aria-label="Mover áudio para o primeiro lugar" title="Mover para o primeiro lugar" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent"><ChevronsUp className="h-4 w-4" /></button></>}
           {item.kind === "audio" && <button onClick={onEditAudio} aria-label="Editar áudio" title="Editar áudio" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent"><Pencil className="h-4 w-4"/></button>}
           <button onClick={onPin} aria-label="Fixar" className={`rounded-lg p-1.5 hover:bg-accent ${item.pinned ? "text-primary" : "text-muted-foreground"}`}>
             <Pin className="h-4 w-4" fill={item.pinned ? "currentColor" : "none"} />
