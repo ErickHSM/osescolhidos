@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { toast } from "sonner";
-import { FileText, Mic, Upload, Search, LogOut, Pin, Trash2, Download, Square, StickyNote, AudioLines, Paperclip, LayoutGrid } from "lucide-react";
+import { FileText, Mic, Upload, Search, LogOut, Pin, Trash2, Download, Square, StickyNote, AudioLines, Paperclip, LayoutGrid, GripVertical, ChevronUp, ChevronsUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ export function Vault({ session }: { session: Session }) {
   const [noteOpen, setNoteOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
   const [recOpen, setRecOpen] = useState(false);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -40,7 +41,9 @@ export function Vault({ session }: { session: Session }) {
 
   const visible = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return items.filter((i) => (filter === "all" || i.kind === filter) && (!s || i.title.toLowerCase().includes(s) || (i.content ?? "").toLowerCase().includes(s)));
+    const filtered = items.filter((i) => (filter === "all" || i.kind === filter) && (!s || i.title.toLowerCase().includes(s) || (i.content ?? "").toLowerCase().includes(s)));
+    if (filter === "audio") return filtered.sort((a, b) => a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at));
+    return filtered;
   }, [items, filter, q]);
 
   const counts = useMemo(() => ({
@@ -85,6 +88,22 @@ export function Vault({ session }: { session: Session }) {
   async function togglePin(i: Item) {
     await supabase.from("items").update({ pinned: !i.pinned }).eq("id", i.id);
     load();
+  }
+
+  async function moveAudio(itemId: string, targetId: string) {
+    if (itemId === targetId) return;
+    const ordered = items.filter((item) => item.kind === "audio").sort((a, b) => a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at));
+    const from = ordered.findIndex((item) => item.id === itemId);
+    const to = ordered.findIndex((item) => item.id === targetId);
+    if (from < 0 || to < 0) return;
+    const [moved] = ordered.splice(from, 1);
+    ordered.splice(to, 0, moved);
+    const updated = ordered.map((item, index) => ({ ...item, sort_order: index }));
+    setItems((current) => current.map((item) => updated.find((next) => next.id === item.id) ?? item));
+    for (const item of updated) {
+      const { error } = await supabase.from("items").update({ sort_order: item.sort_order }).eq("id", item.id).eq("user_id", uid);
+      if (error) { toast.error("Não foi possível salvar a ordem dos áudios"); await load(); return; }
+    }
   }
 
   async function remove(i: Item) {
@@ -142,6 +161,7 @@ export function Vault({ session }: { session: Session }) {
         ))}
       </nav>
 
+      {filter === "audio" && <p className="mt-4 text-sm text-muted-foreground">Arraste os áudios para mudar a ordem ou use as setas. A ordem fica salva na sua conta. Para reorganizar, limpe a busca.</p>}
       <section className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {loading ? (
           <p className="text-muted-foreground">Carregando…</p>
@@ -152,7 +172,12 @@ export function Vault({ session }: { session: Session }) {
         ) : (
           visible.map((i) => (
             <ItemCard key={i.id} item={i} onPin={() => togglePin(i)} onDelete={() => remove(i)}
-              onOpen={() => { if (i.kind === "note") { setEditing(i); setNoteOpen(true); } }} />
+              onOpen={() => { if (i.kind === "note") { setEditing(i); setNoteOpen(true); } }}
+              canReorder={filter === "audio" && !q.trim() && i.kind === "audio"} dragging={draggingId === i.id}
+              onDragStart={() => setDraggingId(i.id)} onDragEnd={() => setDraggingId(null)}
+              onDrop={() => { if (draggingId) void moveAudio(draggingId, i.id); setDraggingId(null); }}
+              onMoveUp={() => { const audio = visible.filter((x) => x.kind === "audio"); const index = audio.findIndex((x) => x.id === i.id); if (index > 0) void moveAudio(i.id, audio[index - 1].id); }}
+              onMoveFirst={() => { const first = visible.find((x) => x.kind === "audio"); if (first && first.id !== i.id) void moveAudio(i.id, first.id); }} />
           ))
         )}
       </section>
@@ -186,18 +211,20 @@ function useSignedUrl(path: string | null) {
   return url;
 }
 
-function ItemCard({ item, onPin, onDelete, onOpen }: { item: Item; onPin: () => void; onDelete: () => void; onOpen: () => void }) {
+function ItemCard({ item, onPin, onDelete, onOpen, canReorder, dragging, onDragStart, onDragEnd, onDrop, onMoveUp, onMoveFirst }: { item: Item; onPin: () => void; onDelete: () => void; onOpen: () => void; canReorder: boolean; dragging: boolean; onDragStart: () => void; onDragEnd: () => void; onDrop: () => void; onMoveUp: () => void; onMoveFirst: () => void }) {
   const url = useSignedUrl(item.kind === "note" ? null : item.file_path);
   const Icon = item.kind === "note" ? StickyNote : item.kind === "audio" ? AudioLines : Paperclip;
   const isImage = item.mime_type?.startsWith("image/");
   return (
-    <article className="glass group flex flex-col rounded-2xl p-5 transition hover:glow">
+    <article draggable={canReorder} onDragStart={(e) => { if (!canReorder) return; e.dataTransfer.effectAllowed = "move"; onDragStart(); }} onDragOver={(e) => { if (canReorder) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; } }} onDrop={(e) => { if (canReorder) { e.preventDefault(); onDrop(); } }} onDragEnd={onDragEnd} className={`glass group flex flex-col rounded-2xl p-5 transition hover:glow ${dragging ? "opacity-40" : ""}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
+          {canReorder && <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-muted-foreground" aria-label="Arrastar para reorganizar" />}
           <Icon className="h-4 w-4 shrink-0 text-primary" />
           <h3 className={`truncate font-semibold ${item.kind === "note" ? "cursor-pointer" : ""}`} onClick={onOpen}>{item.title}</h3>
         </div>
         <div className="flex shrink-0 gap-1">
+          {canReorder && <><button onClick={onMoveUp} aria-label="Mover para cima" title="Mover para cima" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent"><ChevronUp className="h-4 w-4" /></button><button onClick={onMoveFirst} aria-label="Mover para o primeiro lugar" title="Mover para o primeiro lugar" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent"><ChevronsUp className="h-4 w-4" /></button></>}
           <button onClick={onPin} aria-label="Fixar" className={`rounded-lg p-1.5 hover:bg-accent ${item.pinned ? "text-primary" : "text-muted-foreground"}`}>
             <Pin className="h-4 w-4" fill={item.pinned ? "currentColor" : "none"} />
           </button>
