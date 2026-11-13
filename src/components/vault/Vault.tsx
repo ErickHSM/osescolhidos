@@ -57,7 +57,12 @@ export function Vault({ session }: { session: Session }) {
     const path = `${uid}/${crypto.randomUUID()}-${name.replace(/[^\w.-]/g, "_")}`;
     const { error: upErr } = await supabase.storage.from("vault").upload(path, blob, { contentType: blob.type || undefined });
     if (upErr) { toast.error(upErr.message); return; }
-    const { error } = await supabase.from("items").insert({ user_id: uid, kind, title: name, file_path: path, mime_type: blob.type, size_bytes: blob.size });
+    let sortOrder = 0;
+    if (kind === "audio") {
+      const { data: lastAudio } = await supabase.from("items").select("sort_order").eq("user_id", uid).eq("kind", "audio").order("sort_order", { ascending: false }).limit(1).maybeSingle();
+      sortOrder = (lastAudio?.sort_order ?? -1) + 1;
+    }
+    const { error } = await supabase.from("items").insert({ user_id: uid, kind, title: name, file_path: path, mime_type: blob.type, size_bytes: blob.size, sort_order: sortOrder });
     if (error) { toast.error(error.message); return; }
     toast.success(kind === "audio" ? "Áudio salvo" : "Arquivo salvo");
     load();
