@@ -44,8 +44,9 @@ export function Vault({ session }: { session: Session }) {
   const [audioTitle, setAudioTitle] = useState("");
   const [audioCategory, setAudioCategory] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeView, setActiveView] = useState<"vault" | "goals">("vault");
+  const [activeView, setActiveView] = useState<"vault" | "goals" | "pdfs">("vault");
   const fileRef = useRef<HTMLInputElement>(null);
+  const pdfRef = useRef<HTMLInputElement>(null);
 
   const loadCategories = useCallback(async () => {
     const { data, error } = await supabase.auth.getUser();
@@ -111,6 +112,11 @@ export function Vault({ session }: { session: Session }) {
     file: items.filter((i) => i.kind === "file").length,
   }), [items]);
 
+  const pdfItems = useMemo(() => items.filter((item) =>
+    item.kind === "file" && (item.mime_type === "application/pdf" || item.title.toLowerCase().endsWith(".pdf")) &&
+    (!q.trim() || item.title.toLowerCase().includes(q.trim().toLowerCase()))
+  ), [items, q]);
+
   async function uploadBlob(blob: Blob, name: string, kind: "audio" | "file") {
     const path = `${uid}/${crypto.randomUUID()}-${name.replace(/[^\w.-]/g, "_")}`;
     const { error: upErr } = await supabase.storage.from("vault").upload(path, blob, { contentType: blob.type || undefined });
@@ -132,6 +138,18 @@ export function Vault({ session }: { session: Session }) {
       await uploadBlob(f, f.name, f.type.startsWith("audio/") ? "audio" : "file");
     }
     if (fileRef.current) fileRef.current.value = "";
+  }
+
+  async function onPdfFiles(files: FileList | null) {
+    if (!files) return;
+    for (const file of Array.from(files)) {
+      if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+        toast.error(`${file.name} não é um PDF`);
+        continue;
+      }
+      await uploadBlob(file, file.name, "file");
+    }
+    if (pdfRef.current) pdfRef.current.value = "";
   }
 
   async function saveNote(title: string, content: string) {
@@ -273,10 +291,10 @@ export function Vault({ session }: { session: Session }) {
   ];
 
   return (
-    <div className="min-h-screen w-full md:pl-64"><aside className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-border/70 bg-[#10151d]/95 p-5 backdrop-blur-2xl transition-transform md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}><div className="flex justify-center"><Logo /></div><p className="mb-3 mt-10 px-3 text-[10px] font-bold uppercase tracking-[.22em] text-muted-foreground">Workspace</p><button onClick={() => {setActiveView("vault");setSidebarOpen(false);}} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${activeView === "vault" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><LayoutGrid className="h-4 w-4"/> Meu cofre</button><button onClick={() => {setActiveView("goals");setSidebarOpen(false);}} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${activeView === "goals" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><CalendarDays className="h-4 w-4"/> Metas</button><div className="mt-8 flex items-center justify-between px-3"><span className="text-[10px] font-bold uppercase tracking-[.22em] text-muted-foreground">Categorias</span><button onClick={() => {setActiveView("vault");setEditingCategory(null);setCategoryName("");setCategoryManagerOpen(true);}} aria-label="Criar categoria" className="rounded-lg p-1.5 text-muted-foreground hover:bg-white/10 hover:text-primary"><FolderPlus className="h-4 w-4"/></button></div><div className="mt-2 space-y-1">{categories.map((category) => <button key={category.id} onClick={() => {setActiveView("vault");setFilter("audio");setCategoryFilter(category.name);setSidebarOpen(false);}} className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm ${categoryFilter === category.name && filter === "audio" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><span className="flex min-w-0 items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full bg-primary/70"/><span className="truncate">{category.name}</span></span><span className="text-xs opacity-60">{items.filter((i)=>i.kind==="audio"&&i.category===category.name).length}</span></button>)}</div><div className="mt-auto border-t border-border/70 pt-4"><p className="truncate px-3 text-xs text-muted-foreground">{session.user.email}</p><button onClick={() => supabase.auth.signOut()} className="mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-muted-foreground hover:bg-white/5"><LogOut className="h-4 w-4"/> Sair</button></div></aside>{sidebarOpen && <button onClick={()=>setSidebarOpen(false)} aria-label="Fechar menu" className="fixed inset-0 z-30 bg-black/60 md:hidden"/>}<main className="mx-auto w-full max-w-6xl px-3 pb-20 pt-3 sm:px-6 sm:pt-6 md:px-8">
+    <div className="min-h-screen w-full md:pl-64"><aside className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-border/70 bg-[#10151d]/95 p-5 backdrop-blur-2xl transition-transform md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}><div className="flex justify-center"><Logo /></div><p className="mb-3 mt-10 px-3 text-[10px] font-bold uppercase tracking-[.22em] text-muted-foreground">Workspace</p><button onClick={() => {setActiveView("vault");setSidebarOpen(false);}} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${activeView === "vault" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><LayoutGrid className="h-4 w-4"/> Meu cofre</button><button onClick={() => {setActiveView("goals");setSidebarOpen(false);}} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${activeView === "goals" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><CalendarDays className="h-4 w-4"/> Metas</button><button onClick={() => {setActiveView("pdfs");setSidebarOpen(false);setQ("");}} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${activeView === "pdfs" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><FileText className="h-4 w-4"/> PDFs <span className="ml-auto text-xs opacity-60">{items.filter((item)=>item.kind==="file"&&(item.mime_type==="application/pdf"||item.title.toLowerCase().endsWith(".pdf"))).length}</span></button><div className="mt-8 flex items-center justify-between px-3"><span className="text-[10px] font-bold uppercase tracking-[.22em] text-muted-foreground">Categorias</span><button onClick={() => {setActiveView("vault");setEditingCategory(null);setCategoryName("");setCategoryManagerOpen(true);}} aria-label="Criar categoria" className="rounded-lg p-1.5 text-muted-foreground hover:bg-white/10 hover:text-primary"><FolderPlus className="h-4 w-4"/></button></div><div className="mt-2 space-y-1">{categories.map((category) => <button key={category.id} onClick={() => {setActiveView("vault");setFilter("audio");setCategoryFilter(category.name);setSidebarOpen(false);}} className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm ${categoryFilter === category.name && filter === "audio" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><span className="flex min-w-0 items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full bg-primary/70"/><span className="truncate">{category.name}</span></span><span className="text-xs opacity-60">{items.filter((i)=>i.kind==="audio"&&i.category===category.name).length}</span></button>)}</div><div className="mt-auto border-t border-border/70 pt-4"><p className="truncate px-3 text-xs text-muted-foreground">{session.user.email}</p><button onClick={() => supabase.auth.signOut()} className="mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-muted-foreground hover:bg-white/5"><LogOut className="h-4 w-4"/> Sair</button></div></aside>{sidebarOpen && <button onClick={()=>setSidebarOpen(false)} aria-label="Fechar menu" className="fixed inset-0 z-30 bg-black/60 md:hidden"/>}<main className="mx-auto w-full max-w-6xl px-3 pb-20 pt-3 sm:px-6 sm:pt-6 md:px-8">
       <header className="glass sticky top-2 z-20 flex items-center justify-between gap-2 rounded-2xl px-3 py-2.5 sm:top-4 sm:gap-3 sm:px-4 sm:py-3">
         <div className="flex items-center gap-2"><button onClick={() => setSidebarOpen(true)} aria-label="Abrir menu" className="rounded-xl p-2 text-muted-foreground hover:bg-white/5 md:hidden"><Menu className="h-5 w-5"/></button><div className="md:hidden"><Logo size="sm" /></div></div>
-        {activeView === "vault" && <div className="relative hidden max-w-sm flex-1 sm:block">
+        {activeView !== "goals" && <div className="relative hidden max-w-sm flex-1 sm:block">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar no cofre…" className="h-10 rounded-xl pl-9" />
         </div>}
@@ -346,6 +364,20 @@ export function Vault({ session }: { session: Session }) {
       <Dialog open={!!editingAudio} onOpenChange={(open)=>{if(!open)setEditingAudio(null);}}><DialogContent className="glass rounded-3xl sm:max-w-md"><DialogHeader><DialogTitle>Editar áudio</DialogTitle></DialogHeader><div className="space-y-3"><label className="block space-y-1 text-sm"><span className="text-muted-foreground">Nome do áudio</span><Input value={audioTitle} onChange={(e)=>setAudioTitle(e.target.value)} className="h-11 rounded-xl"/></label><label className="block space-y-1 text-sm"><span className="text-muted-foreground">Categoria</span><select value={audioCategory} onChange={(e)=>setAudioCategory(e.target.value)} className="h-11 w-full rounded-xl border border-input bg-background px-3">{categories.map((category)=><option key={category.id} value={category.name}>{category.name}</option>)}</select></label><Button onClick={()=>void updateAudio()} className="w-full rounded-xl">Salvar alterações</Button></div></DialogContent></Dialog>
       <NoteDialog open={noteOpen} onOpenChange={(o) => { setNoteOpen(o); if (!o) setEditing(null); }} item={editing} onSave={saveNote} />
       <RecorderDialog open={recOpen} onOpenChange={setRecOpen} onSave={async (b, n) => { await uploadBlob(b, n, "audio"); setRecOpen(false); }} />
+      </> : activeView === "pdfs" ? <>
+        <section className="mx-auto mt-8 max-w-3xl text-center">
+          <h1 className="text-3xl font-semibold sm:text-4xl">Biblioteca de PDFs</h1>
+          <p className="mt-2 text-muted-foreground">Envie documentos e leia o conteúdo diretamente aqui, sem precisar sair do OsEscolhidos.</p>
+          <div className="mt-5 flex justify-center">
+            <Button onClick={() => pdfRef.current?.click()} className="glow rounded-xl"><Upload className="mr-2 h-4 w-4"/> Enviar PDF</Button>
+            <input ref={pdfRef} type="file" accept="application/pdf,.pdf" multiple hidden onChange={(e) => void onPdfFiles(e.target.files)} />
+          </div>
+        </section>
+        <section className="mt-8 grid grid-cols-1 gap-5 lg:grid-cols-2">
+          {loading ? <p className="text-muted-foreground">Carregando PDFs…</p> : pdfItems.length === 0 ? (
+            <div className="glass col-span-full rounded-2xl p-10 text-center text-muted-foreground"><FileText className="mx-auto mb-3 h-9 w-9 opacity-60"/><p className="font-medium text-foreground">Sua biblioteca está vazia</p><p className="mt-1 text-sm">Envie um PDF para começar a ler por aqui.</p></div>
+          ) : pdfItems.map((item) => <PdfCard key={item.id} item={item} onDelete={() => void remove(item)} />)}
+        </section>
       </> : <GoalCalendar session={session} />}
     </main></div>
   );
@@ -372,6 +404,27 @@ function useSignedUrl(path: string | null) {
     supabase.storage.from("vault").createSignedUrl(path, 3600).then(({ data }) => setUrl(data?.signedUrl ?? null));
   }, [path]);
   return url;
+}
+
+function PdfCard({ item, onDelete }: { item: Item; onDelete: () => void }) {
+  const url = useSignedUrl(item.file_path);
+  return (
+    <article className="glass flex min-w-0 flex-col overflow-hidden rounded-2xl">
+      <div className="flex items-center justify-between gap-3 border-b border-border/70 p-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><FileText className="h-5 w-5"/></div>
+          <div className="min-w-0"><h2 className="truncate text-sm font-semibold">{item.title}</h2><p className="mt-0.5 text-xs text-muted-foreground">{fmtDate(item.created_at)} {fmtSize(item.size_bytes) && `· ${fmtSize(item.size_bytes)}`}</p></div>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          {url && <a href={url} target="_blank" rel="noreferrer" download={item.title} className="rounded-lg p-2 text-muted-foreground hover:bg-accent hover:text-primary" aria-label="Baixar PDF"><Download className="h-4 w-4"/></a>}
+          <button type="button" onClick={onDelete} className="rounded-lg p-2 text-muted-foreground hover:bg-rose-500/10 hover:text-rose-400" aria-label="Excluir PDF"><Trash2 className="h-4 w-4"/></button>
+        </div>
+      </div>
+      <div className="min-h-[420px] bg-white/5">
+        {url ? <iframe src={`${url}#toolbar=1&navpanes=0&view=FitH`} title={`Leitor de ${item.title}`} className="h-[520px] w-full border-0 bg-white" /> : <div className="flex h-[520px] items-center justify-center text-sm text-muted-foreground">Carregando documento…</div>}
+      </div>
+    </article>
+  );
 }
 
 function ItemCard({ item, categoryLabel, listened, onToggleListened, onPin, onDelete, onOpen, onEditAudio, canReorder, showMoveControls, dragging, onDragStart, onDragEnd, onDrop, onMoveUp, onMoveDown, onMoveFirst }: { item: Item; categoryLabel: string; listened: boolean; onToggleListened: (value: boolean) => void; onPin: () => void; onDelete: () => void; onOpen: () => void; onEditAudio: () => void; canReorder: boolean; showMoveControls: boolean; dragging: boolean; onDragStart: () => void; onDragEnd: () => void; onDrop: () => void; onMoveUp: () => void; onMoveDown: () => void; onMoveFirst: () => void }) {
