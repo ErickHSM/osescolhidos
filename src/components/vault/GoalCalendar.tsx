@@ -42,6 +42,7 @@ export function GoalCalendar({ session }: { session: Session }) {
   const [status, setStatus] = useState<GoalStatus>("pending");
   const [saving, setSaving] = useState(false);
   const [recurrence, setRecurrence] = useState<Recurrence>("none");
+  const [recurringTemplates, setRecurringTemplates] = useState<RecurringTemplate[]>([]);
 
   const monthStart = startOfMonth(month);
   const monthEnd = endOfMonth(month);
@@ -60,6 +61,7 @@ export function GoalCalendar({ session }: { session: Session }) {
     if (goalsError) toast.error("Não foi possível carregar suas metas: " + goalsError.message);
     let completeGoals = allGoals ?? [];
     const templates = (authData.user?.user_metadata?.recurring_goal_templates ?? []) as RecurringTemplate[];
+    setRecurringTemplates(templates);
     if (!goalsError && templates.length) {
       const monthDays = eachDayOfInterval({ start: monthStart, end: monthEnd });
       const missing = templates.flatMap((template) => monthDays.flatMap((day) => {
@@ -189,11 +191,51 @@ export function GoalCalendar({ session }: { session: Session }) {
     await load();
   }
 
+  const editingTemplate = editing
+    ? recurringTemplates.find((template) =>
+        template.title === editing.title &&
+        template.description === editing.description &&
+        editing.goal_date >= template.start_date
+      )
+    : undefined;
+
   async function deleteGoal() {
     if (!editing) return;
     const { error } = await supabase.from("goals").delete().eq("id", editing.id).eq("user_id", uid);
-    if (error) { toast.error("Não foi possível excluir a meta"); return; }
-    toast.success("Meta excluída");
+    if (error) { toast.error("Não foi possível excluir a meta: " + error.message); return; }
+    toast.success("Esta ocorrência foi excluída");
+    setDialogOpen(false);
+    await load();
+  }
+
+  async function deleteRecurringSeries() {
+    if (!editing || !editingTemplate) return;
+    const confirmed = confirm(
+      `Excluir a meta recorrente "${editingTemplate.title}"? Isso interrompe as próximas repetições e apaga todas as ocorrências já criadas dessa série.`
+    );
+    if (!confirmed) return;
+    const nextTemplates = recurringTemplates.filter((template) => template.id !== editingTemplate.id);
+    const { error: metadataError } = await supabase.auth.updateUser({
+      data: { recurring_goal_templates: nextTemplates },
+    });
+    if (metadataError) { toast.error("Não foi possível interromper a recorrência: " + metadataError.message); return; }
+    let deletion = supabase.from("goals").delete()
+      .eq("user_id", uid)
+      .eq("title", editingTemplate.title)
+      .gte("goal_date", editingTemplate.start_date);
+    deletion = editingTemplate.description === null
+      ? deletion.is("description", null)
+      : deletion.eq("description", editingTemplate.description);
+    const { error } = await deletion;
+    if (error) {
+      toast.error("A repetição foi interrompida, mas não foi possível apagar todas as ocorrências: " + error.message);
+      setRecurringTemplates(nextTemplates);
+      setDialogOpen(false);
+      await load();
+      return;
+    }
+    setRecurringTemplates(nextTemplates);
+    toast.success("Meta recorrente e suas ocorrências excluídas");
     setDialogOpen(false);
     await load();
   }
@@ -295,7 +337,8 @@ export function GoalCalendar({ session }: { session: Session }) {
               {(["pending", "completed", "failed"] as GoalStatus[]).map((value) => <button key={value} type="button" onClick={() => setStatus(value)} className={`rounded-xl border px-2 py-2 text-xs font-medium transition sm:text-sm ${status === value ? statusStyles[value] + " ring-1 ring-current" : "border-border text-muted-foreground hover:bg-accent"}`}>{statusLabels[value]}</button>)}
             </div></div>
             <div className="flex gap-2 pt-2">
-              {editing && <Button type="button" variant="ghost" onClick={() => void deleteGoal()} className="rounded-xl text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Excluir</Button>}
+              {editing && <Button type="button" variant="ghost" onClick={() => void deleteGoal()} className="rounded-xl text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Excluir esta</Button>}
+              {editingTemplate && <Button type="button" variant="outline" onClick={() => void deleteRecurringSeries()} className="rounded-xl border-destructive/40 text-destructive hover:bg-destructive/10"><Trash2 className="mr-2 h-4 w-4" /> Excluir recorrência</Button>}
               <Button type="button" disabled={saving} onClick={() => void saveGoal()} className="glow ml-auto rounded-xl">{saving ? "Salvando…" : "Salvar meta"}</Button>
             </div>
           </div>
