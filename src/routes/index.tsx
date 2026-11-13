@@ -1,23 +1,48 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
+import { supabase } from "@/integrations/supabase/client";
+import { AuthScreen } from "@/components/vault/AuthScreen";
+import { Vault } from "@/components/vault/Vault";
 
-// The home route ships no og:image, so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: "OsEscolhidos — Seu cofre pessoal" },
+      { name: "description", content: "Guarde áudios, anotações e arquivos em um cofre privado e moderno." },
+      { property: "og:title", content: "OsEscolhidos — Seu cofre pessoal" },
+      { property: "og:description", content: "Guarde áudios, anotações e arquivos em um cofre privado e moderno." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+  }),
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
 function Index() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setReady(true);
+    });
+    return () => data.subscription.unsubscribe();
+  }, []);
+
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
+    <>
+      <div className="aurora" />
+      <div className="lightning-flash" />
+      {!ready ? (
+        <div className="flex min-h-screen items-center justify-center text-muted-foreground">Carregando…</div>
+      ) : session ? (
+        <Vault session={session} />
+      ) : (
+        <AuthScreen />
+      )}
+    </>
   );
 }

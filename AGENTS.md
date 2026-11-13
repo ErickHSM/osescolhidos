@@ -28,3 +28,5 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+- Vault data (`items` table + private `vault` storage bucket, files under `<user_id>/`) is read/written from the browser with RLS scoping rows to the owner; no server functions needed.
