@@ -38,14 +38,14 @@
 
 :root {
   --radius: 0.9rem;
-  --background: oklch(0.145 0.018 255);
+  --background: oklch(0.145 0.004 260);
   --foreground: oklch(0.96 0.004 260);
-  --card: oklch(0.205 0.022 255 / 78%);
+  --card: oklch(0.205 0.005 260 / 82%);
   --card-foreground: oklch(0.96 0.004 260);
   --popover: oklch(0.21 0.007 260);
   --popover-foreground: oklch(0.96 0.004 260);
-  --primary: oklch(0.78 0.14 195);
-  --primary-foreground: oklch(0.13 0.025 250);
+  --primary: oklch(0.78 0.008 260);
+  --primary-foreground: oklch(0.16 0.004 260);
   --secondary: oklch(0.27 0.008 260);
   --secondary-foreground: oklch(0.94 0.004 260);
   --muted: oklch(0.25 0.007 260);
@@ -56,10 +56,10 @@
   --destructive-foreground: oklch(0.98 0 0);
   --border: oklch(1 0 0 / 9%);
   --input: oklch(1 0 0 / 12%);
-  --ring: oklch(0.86 0.13 210 / 60%);
-  --glass: oklch(0.22 0.025 255 / 66%);
-  --glow: oklch(0.78 0.14 195);
-  --shadow-glow: 0 0 0 1px oklch(0.86 0.13 210 / 30%), 0 0 40px -8px oklch(0.86 0.13 210 / 55%);
+  --ring: oklch(0.78 0.008 260 / 55%);
+  --glass: oklch(0.22 0.006 260 / 72%);
+  --glow: oklch(0.78 0.008 260);
+  --shadow-glow: 0 0 0 1px oklch(0.78 0.008 260 / 18%), 0 0 32px -10px oklch(0.78 0.008 260 / 22%);
 }
 
 @layer base {
@@ -102,9 +102,9 @@
   overflow: hidden;
   pointer-events: none;
   background:
-    radial-gradient(40rem 30rem at 15% 10%, oklch(0.86 0.13 210 / 14%), transparent 60%),
+    radial-gradient(40rem 30rem at 15% 10%, oklch(0.78 0.008 260 / 8%), transparent 60%),
     radial-gradient(35rem 30rem at 90% 30%, oklch(0.75 0.02 260 / 12%), transparent 60%),
-    radial-gradient(40rem 30rem at 50% 110%, oklch(0.86 0.13 210 / 10%), transparent 60%),
+    radial-gradient(40rem 30rem at 50% 110%, oklch(0.78 0.008 260 / 7%), transparent 60%),
     var(--background);
 }
 
@@ -117,6 +117,6 @@
 }
 @utility lightning-flash {
   position: fixed; inset: 0; z-index: -1; pointer-events: none;
-  background: radial-gradient(60rem 40rem at 70% -10%, oklch(0.9 0.1 210 / 18%), transparent 60%);
+  background: radial-gradient(60rem 40rem at 70% -10%, oklch(0.82 0.006 260 / 10%), transparent 60%);
   animation: flash 9s ease-in-out infinite;
 }
