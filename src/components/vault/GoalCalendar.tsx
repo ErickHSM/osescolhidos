@@ -143,18 +143,18 @@ export function GoalCalendar({ session }: { session: Session }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-7 gap-1">
-          {weekDays.map((day) => <div key={day} className="py-2 text-center text-xs font-semibold text-muted-foreground">{day}</div>)}
+        <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
+          {weekDays.map((day) => <div key={day} className="py-1.5 text-center text-[10px] font-semibold text-muted-foreground sm:py-2 sm:text-xs">{day}</div>)}
           {days.map((day) => {
             const dateKey = format(day, "yyyy-MM-dd");
             const dayGoals = goals.filter((goal) => goal.goal_date === dateKey);
             const inMonth = isSameMonth(day, month);
             return (
-              <div key={dateKey} className={`min-h-28 rounded-xl border p-1.5 transition sm:min-h-36 sm:p-2 ${inMonth ? "border-border/60 bg-background/20" : "border-transparent bg-background/5 opacity-40"} ${isToday(day) ? "ring-1 ring-primary" : ""}`}>
-                <button onClick={() => openNew(day)} className={`mb-1 flex h-7 w-7 items-center justify-center rounded-lg text-xs font-semibold ${isToday(day) ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"}`}>{format(day, "d")}</button>
+              <div key={dateKey} className={`min-h-20 rounded-xl border p-1 sm:min-h-36 sm:p-2 ${inMonth ? "border-border/60 bg-background/20" : "border-transparent bg-background/5 opacity-40"} ${isToday(day) ? "ring-1 ring-primary" : ""}`}>
+                <button onClick={() => openNew(day)} className={`mb-1 flex h-6 w-6 items-center justify-center rounded-lg text-[10px] font-semibold sm:h-7 sm:w-7 sm:text-xs ${isToday(day) ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"}`}>{format(day, "d")}</button>
                 <div className="space-y-1">
                   {dayGoals.slice(0, 3).map((goal) => (
-                    <button key={goal.id} onClick={() => openEdit(goal)} title={goal.title} className={`block w-full truncate rounded-md border px-1.5 py-1 text-left text-[10px] leading-tight sm:text-xs ${statusStyles[goal.status as GoalStatus]}`}>
+                    <button key={goal.id} onClick={() => openEdit(goal)} title={goal.title} className={`block w-full truncate rounded-md border px-1 py-0.5 text-left text-[9px] leading-tight sm:px-1.5 sm:py-1 sm:text-xs ${statusStyles[goal.status as GoalStatus]}`}>
                       <span className="mr-1">{goal.status === "completed" ? "✓" : goal.status === "failed" ? "×" : "•"}</span>{goal.title}
                     </button>
                   ))}
