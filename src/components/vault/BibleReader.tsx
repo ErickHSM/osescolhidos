@@ -7,6 +7,9 @@ import { supabase } from "@/integrations/supabase/client";
 type BibleBook = { name: string; slug: string; chapters: number; testament: "Antigo Testamento" | "Novo Testamento" };
 type BibleVerse = { v: number; t: string };
 type BibleChapterResponse = { verses?: BibleVerse[]; translation?: string; book?: string; chapter?: number };
+type KokoroAudio = { toBlob: () => Blob };
+type KokoroEngine = { generate: (text: string, options: { voice: string; speed: number }) => Promise<KokoroAudio> };
+type KokoroModule = { KokoroTTS: { from_pretrained: (modelId: string, options: { dtype: string; device: string }) => Promise<KokoroEngine> } };
 
 const books: BibleBook[] = [
   ["Gênesis","genesis",50],["Êxodo","exodus",40],["Levítico","leviticus",27],["Números","numbers",36],["Deuteronômio","deuteronomy",34],["Josué","joshua",24],["Juízes","judges",21],["Rute","ruth",4],["1 Samuel","1-samuel",31],["2 Samuel","2-samuel",24],["1 Reis","1-kings",22],["2 Reis","2-kings",25],["1 Crônicas","1-chronicles",29],["2 Crônicas","2-chronicles",36],["Esdras","ezra",10],["Neemias","nehemiah",13],["Ester","esther",10],["Jó","job",42],["Salmos","psalms",150],["Provérbios","proverbs",31],["Eclesiastes","ecclesiastes",12],["Cantares","song-of-solomon",8],["Isaías","isaiah",66],["Jeremias","jeremiah",52],["Lamentações","lamentations",5],["Ezequiel","ezekiel",48],["Daniel","daniel",12],["Oséias","hosea",14],["Joel","joel",3],["Amós","amos",9],["Obadias","obadiah",1],["Jonas","jonah",4],["Miquéias","micah",7],["Naum","nahum",3],["Habacuque","habakkuk",3],["Sofonias","zephaniah",3],["Ageu","haggai",2],["Zacarias","zechariah",14],["Malaquias","malachi",4],
@@ -48,11 +51,14 @@ export function BibleReader() {
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [isCoverOpen, setIsCoverOpen] = useState(false);
   const [coverOpening, setCoverOpening] = useState(false);
-  const [speechStatus, setSpeechStatus] = useState<"idle" | "playing" | "paused">("idle");
+  const [speechStatus, setSpeechStatus] = useState<"idle" | "loading" | "playing" | "paused">("idle");
   const [speechRate, setSpeechRate] = useState(0.95);
-  const [speechPitch, setSpeechPitch] = useState(0.78);
-  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [selectedVoiceName, setSelectedVoiceName] = useState("");
+  const [selectedVoiceName, setSelectedVoiceName] = useState("pm_santa");
+  const [speechMessage, setSpeechMessage] = useState("");
+  const [voiceNotice, setVoiceNotice] = useState("");
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const ttsRef = useRef<KokoroEngine | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
   const [voiceNotice, setVoiceNotice] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<BibleTopicResult[]>([]);
@@ -89,68 +95,85 @@ export function BibleReader() {
     setLastProgress(progress);
     supabase.auth.updateUser({ data: { bible_progress: progress } });
   }, [bookSlug, chapter, pageIndex, loading, data]);
-  useEffect(() => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-    const loadVoices = () => {
-      const voices = window.speechSynthesis.getVoices();
-      const masculinePortuguese = voices.filter((voice) =>
-        voice.lang.toLowerCase().startsWith("pt") &&
-        /antonio|antônio|daniel|ricardo|male|masculino|homem|masculina|thiago|tiago|bruno|carlos|joao|joão|lucas|pedro|paulo|marcos|felipe|rafael|gustavo|eduardo|henrique/i.test(voice.name)
-      );
-      setAvailableVoices(masculinePortuguese);
-      if (!selectedVoiceName && masculinePortuguese.length) {
-        setSelectedVoiceName(masculinePortuguese[0].name);
-        setVoiceNotice("");
-      } else if (!masculinePortuguese.length) {
-        setVoiceNotice("Seu navegador não disponibilizou uma voz masculina identificável em português. A leitura foi bloqueada para não usar uma voz feminina. Para uma voz masculina grave garantida, precisamos conectar uma voz neural.");
-      }
-    };
-    loadVoices();
-    window.speechSynthesis.addEventListener("voiceschanged", loadVoices);
-    return () => window.speechSynthesis.removeEventListener("voiceschanged", loadVoices);
-  }, [selectedVoiceName]);
   useEffect(() => () => {
-    if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
+    audioRef.current?.pause();
+    if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
   }, []);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-      setSpeechStatus("idle");
+    audioRef.current?.pause();
+    if (audioRef.current) audioRef.current.currentTime = 0;
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
     }
+    setSpeechStatus("idle");
+    setSpeechMessage("");
   }, [bookSlug, chapter]);
 
   function stopReading() {
-    if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
+    audioRef.current?.pause();
+    if (audioRef.current) audioRef.current.currentTime = 0;
     setSpeechStatus("idle");
+    setSpeechMessage("");
   }
 
-  function startReading() {
-    if (!data?.verses?.length || typeof window === "undefined" || !("speechSynthesis" in window)) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(data.verses.map((verse) => verse.t).join(" "));
-    utterance.lang = "pt-BR";
-    utterance.rate = speechRate;
-    utterance.pitch = speechPitch;
-    const voice = window.speechSynthesis.getVoices().find((item) => item.name === selectedVoiceName && item.lang.toLowerCase().startsWith("pt"));
-    if (!voice) {
-      setVoiceNotice("Nenhuma voz masculina em português está disponível neste navegador. A leitura não será iniciada com uma voz feminina.");
-      setSpeechStatus("idle");
-      return;
-    }
+  async function startReading() {
+    if (!data?.verses?.length || typeof window === "undefined") return;
+    setSpeechStatus("loading");
     setVoiceNotice("");
-    utterance.voice = voice;
-    utterance.onend = () => setSpeechStatus("idle");
-    utterance.onerror = () => setSpeechStatus("idle");
-    window.speechSynthesis.speak(utterance);
-    setSpeechStatus("playing");
+    setSpeechMessage("Preparando a voz neural masculina…");
+    try {
+      let engine = ttsRef.current;
+      if (!engine) {
+        setSpeechMessage("Baixando e preparando o modelo neural (somente na primeira vez)…");
+        const moduleUrl = "https://esm.sh/kokoro-js@1.2.1";
+        const { KokoroTTS } = await import(/* @vite-ignore */ moduleUrl) as KokoroModule;
+        const modelId = "onnx-community/Kokoro-82M-v1.0-ONNX";
+        const supportsWebGPU = "gpu" in navigator;
+        try {
+          engine = await KokoroTTS.from_pretrained(modelId, {
+            dtype: supportsWebGPU ? "fp32" : "q8",
+            device: supportsWebGPU ? "webgpu" : "wasm",
+          });
+        } catch (webGpuError) {
+          if (!supportsWebGPU) throw webGpuError;
+          setSpeechMessage("Acelerador gráfico indisponível. Preparando o modo compatível…");
+          engine = await KokoroTTS.from_pretrained(modelId, { dtype: "q8", device: "wasm" });
+        }
+        ttsRef.current = engine;
+      }
+      setSpeechMessage("Gerando a leitura com voz masculina…");
+      const chapterText = data.verses.map((verse) => verse.t).join(" ");
+      const generatedAudio = await engine.generate(chapterText, { voice: selectedVoiceName, speed: speechRate });
+      const nextUrl = URL.createObjectURL(generatedAudio.toBlob());
+      if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = nextUrl;
+      const player = audioRef.current;
+      if (!player) throw new Error("O reprodutor de áudio não está disponível.");
+      player.src = nextUrl;
+      await player.play();
+      setSpeechMessage("");
+      setSpeechStatus("playing");
+    } catch (cause) {
+      console.error("Falha ao gerar voz neural:", cause);
+      setVoiceNotice(cause instanceof Error ? cause.message : "Não foi possível iniciar a voz neural. Tente novamente.");
+      setSpeechMessage("");
+      setSpeechStatus("idle");
+    }
   }
 
   function toggleReading() {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-    if (speechStatus === "playing") { window.speechSynthesis.pause(); setSpeechStatus("paused"); }
-    else if (speechStatus === "paused") { window.speechSynthesis.resume(); setSpeechStatus("playing"); }
-    else startReading();
+    const player = audioRef.current;
+    if (speechStatus === "loading") return;
+    if (speechStatus === "playing") {
+      player?.pause();
+      setSpeechStatus("paused");
+    } else if (speechStatus === "paused" && player) {
+      void player.play().then(() => setSpeechStatus("playing")).catch(() => setSpeechStatus("idle"));
+    } else {
+      void startReading();
+    }
   }
 
   useEffect(() => {
@@ -227,6 +250,7 @@ export function BibleReader() {
 
   return (
     <div className="space-y-5">
+      <audio ref={audioRef} onEnded={() => { setSpeechStatus("idle"); setSpeechMessage(""); }} className="hidden" />
       <style>{`
         @keyframes bible-page-next { 0% { transform: perspective(1800px) rotateY(-82deg); opacity: .25; filter: brightness(.65); } 65% { transform: perspective(1800px) rotateY(8deg); opacity: 1; filter: brightness(1.08); } 100% { transform: perspective(1800px) rotateY(0); opacity: 1; filter: brightness(1); } }
         @keyframes bible-page-previous { 0% { transform: perspective(1800px) rotateY(82deg); opacity: .25; filter: brightness(.65); } 65% { transform: perspective(1800px) rotateY(-8deg); opacity: 1; filter: brightness(1.08); } 100% { transform: perspective(1800px) rotateY(0); opacity: 1; filter: brightness(1); } }
@@ -260,9 +284,9 @@ export function BibleReader() {
       </section>
       {lastProgress && savedBook && <section className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-3"><div className="flex items-center gap-2"><BookmarkCheck className="h-5 w-5 text-primary"/><div><p className="text-sm font-semibold">Sua última leitura</p><p className="text-xs text-muted-foreground">{savedBook.name} {lastProgress.chapter} · página {lastProgress.pageIndex + 1}</p></div></div><Button type="button" size="sm" variant="outline" className="rounded-xl" onClick={() => { setBookSlug(lastProgress.bookSlug); setChapter(lastProgress.chapter); setPageIndex(lastProgress.pageIndex); setIsCoverOpen(true); }}>Continuar leitura</Button></section>}
       {isCoverOpen && <div className="mx-auto mb-4 flex max-w-5xl flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/20 p-3 text-[#f5e6cd]">
-          <div className="flex items-center gap-2"><Volume2 className="h-5 w-5 text-[#d9bd82]"/><div><p className="text-sm font-semibold">Ouvir a Bíblia</p><p className="text-xs text-[#e8d6b8]/75">{speechStatus === "playing" ? "Lendo este capítulo…" : speechStatus === "paused" ? "Leitura pausada" : "Escute este capítulo em voz alta"}</p></div></div>
-          <div className="flex flex-wrap items-center gap-2"><label className="flex items-center gap-2 text-xs">Voz masculina<select aria-label="Voz masculina em português" value={selectedVoiceName} onChange={(event) => { setSelectedVoiceName(event.target.value); setVoiceNotice(""); }} className="max-w-[190px] rounded-lg border border-white/15 bg-[#29231d] px-2 py-1.5 text-[#f5e6cd]"><option value="">Selecione uma voz masculina</option>{availableVoices.map((voice) => <option key={voice.name} value={voice.name}>{voice.name}</option>)}</select></label><label className="flex items-center gap-2 text-xs">Gravidade<select aria-label="Gravidade da voz" value={speechPitch} onChange={(event) => setSpeechPitch(Number(event.target.value))} className="rounded-lg border border-white/15 bg-[#29231d] px-2 py-1.5 text-[#f5e6cd]"><option value={0.65}>Muito grave</option><option value={0.78}>Grave</option><option value={0.9}>Média-grave</option><option value={1}>Natural</option></select></label><label className="flex items-center gap-2 text-xs">Velocidade<select aria-label="Velocidade da leitura" value={speechRate} onChange={(event) => setSpeechRate(Number(event.target.value))} className="rounded-lg border border-white/15 bg-[#29231d] px-2 py-1.5 text-[#f5e6cd]"><option value={0.8}>0,8×</option><option value={0.95}>1×</option><option value={1.2}>1,2×</option><option value={1.5}>1,5×</option></select></label>
-          <Button type="button" size="sm" onClick={toggleReading} disabled={loading || !!error || !data?.verses?.length || !selectedVoiceName || availableVoices.length === 0} className="rounded-xl bg-[#b58b4c] text-[#21180e] hover:bg-[#c99d5a]">{speechStatus === "playing" ? <><Pause className="mr-1 h-4 w-4"/> Pausar</> : speechStatus === "paused" ? <><Play className="mr-1 h-4 w-4"/> Continuar</> : <><Play className="mr-1 h-4 w-4"/> Ouvir capítulo</>}</Button>
+          <div className="flex items-center gap-2"><Volume2 className="h-5 w-5 text-[#d9bd82]"/><div><p className="text-sm font-semibold">Ouvir a Bíblia</p><p className="text-xs text-[#e8d6b8]/75">{speechStatus === "loading" ? (speechMessage || "Preparando áudio neural…") : speechStatus === "playing" ? "Lendo com voz neural masculina…" : speechStatus === "paused" ? "Leitura pausada" : "Voz Kokoro neural · processamento no dispositivo"}</p></div></div>
+          <div className="flex flex-wrap items-center gap-2"><label className="flex items-center gap-2 text-xs">Voz neural masculina<select aria-label="Voz neural masculina" value={selectedVoiceName} onChange={(event) => { setSelectedVoiceName(event.target.value); setVoiceNotice(""); }} className="max-w-[190px] rounded-lg border border-white/15 bg-[#29231d] px-2 py-1.5 text-[#f5e6cd]"><option value="pm_santa">Santa · grave</option><option value="pm_alex">Alex · masculina</option></select></label><label className="flex items-center gap-2 text-xs">Velocidade<select aria-label="Velocidade da leitura" value={speechRate} onChange={(event) => setSpeechRate(Number(event.target.value))} className="rounded-lg border border-white/15 bg-[#29231d] px-2 py-1.5 text-[#f5e6cd]"><option value={0.8}>0,8×</option><option value={0.95}>1×</option><option value={1.2}>1,2×</option><option value={1.5}>1,5×</option></select></label>
+          <Button type="button" size="sm" onClick={toggleReading} disabled={loading || speechStatus === "loading" || !!error || !data?.verses?.length} className="rounded-xl bg-[#b58b4c] text-[#21180e] hover:bg-[#c99d5a]">{speechStatus === "playing" ? <><Pause className="mr-1 h-4 w-4"/> Pausar</> : speechStatus === "paused" ? <><Play className="mr-1 h-4 w-4"/> Continuar</> : <><Play className="mr-1 h-4 w-4"/> Ouvir capítulo</>}</Button>
           {speechStatus !== "idle" && <Button type="button" size="sm" variant="outline" onClick={stopReading} className="rounded-xl border-white/20 text-[#f5e6cd] hover:bg-white/10"><Square className="mr-1 h-3.5 w-3.5"/> Parar</Button>}</div>{voiceNotice && <p role="status" className="text-xs text-amber-200">{voiceNotice}</p>}</div>}
         <div className="bible-book mx-auto max-w-5xl rounded-[22px] p-3 sm:p-5">
         <div className="hidden overflow-hidden rounded-lg sm:grid sm:grid-cols-2 sm:gap-[2px]">
