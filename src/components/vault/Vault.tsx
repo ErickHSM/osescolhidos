@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { toast } from "sonner";
-import { FileText, Mic, Upload, Search, LogOut, Pin, Trash2, Download, Square, StickyNote, AudioLines, Paperclip, LayoutGrid, GripVertical, ChevronUp, ChevronDown, ChevronsUp, CalendarDays, FolderPlus, Pencil, Tags, Menu } from "lucide-react";
+import { FileText, Mic, Upload, Search, LogOut, Pin, Trash2, Download, Square, StickyNote, AudioLines, Paperclip, LayoutGrid, GripVertical, ChevronUp, ChevronDown, ChevronsUp, CalendarDays, FolderPlus, Pencil, Tags, Menu, Camera, UserCircle2, Award } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { Button } from "@/components/ui/button";
@@ -46,6 +46,18 @@ export function Vault({ session }: { session: Session }) {
   const [audioTitle, setAudioTitle] = useState("");
   const [audioCategory, setAudioCategory] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileName, setProfileName] = useState(String(session.user.user_metadata?.display_name || session.user.email?.split("@")[0] || "Escolhido"));
+  const [profileAvatarPath, setProfileAvatarPath] = useState<string | null>(session.user.user_metadata?.avatar_path || null);
+  const [journeyStart, setJourneyStart] = useState(String(session.user.user_metadata?.journey_start || new Date().toISOString().slice(0,10)));
+  const [profileSaving, setProfileSaving] = useState(false);
+  const avatarUrl = useSignedUrl(profileAvatarPath);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const journeyDays = Math.max(0, Math.floor((new Date(new Date().toDateString()).getTime() - new Date(journeyStart + "T00:00:00").getTime()) / 86400000) + 1);
+  const rankTiers = [{days:1,name:"Iniciante"},{days:5,name:"Determinado"},{days:15,name:"Disciplinado"},{days:30,name:"Guerreiro"},{days:60,name:"Vencedor"},{days:90,name:"Campeão"},{days:180,name:"Lendário"},{days:365,name:"Imparável"}];
+  const currentRank = [...rankTiers].reverse().find((tier) => journeyDays >= tier.days) || rankTiers[0];
+  const nextRank = rankTiers.find((tier) => tier.days > journeyDays);
+  const rankProgress = nextRank ? Math.min(100, Math.round(((journeyDays - currentRank.days) / (nextRank.days - currentRank.days)) * 100)) : 100;
   const [activeView, setActiveView] = useState<"vault" | "goals" | "pdfs">("vault");
   const fileRef = useRef<HTMLInputElement>(null);
   const pdfRef = useRef<HTMLInputElement>(null);
@@ -328,12 +340,14 @@ export function Vault({ session }: { session: Session }) {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar no cofre…" className="h-10 rounded-xl pl-9" />
         </div>}
-        {activeView === "vault" && <Button variant="ghost" size="sm" onClick={() => {setEditingCategory(null);setCategoryName("");setCategoryManagerOpen(true);}} className="rounded-xl text-muted-foreground"><Tags className="mr-1 h-4 w-4"/> Categorias</Button>}<Button variant="ghost" size="sm" onClick={() => supabase.auth.signOut()} className="hidden rounded-xl text-muted-foreground md:inline-flex">
+        {activeView === "vault" && <Button variant="ghost" size="sm" onClick={() => {setEditingCategory(null);setCategoryName("");setCategoryManagerOpen(true);}} className="rounded-xl text-muted-foreground"><Tags className="mr-1 h-4 w-4"/> Categorias</Button>}<button type="button" onClick={() => setProfileOpen(true)} title="Meu perfil" aria-label="Abrir meu perfil" className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/5 ring-1 ring-white/10 hover:ring-primary/60">{avatarUrl ? <img src={avatarUrl} alt="Foto do perfil" className="h-full w-full object-cover"/> : <UserCircle2 className="h-6 w-6 text-muted-foreground"/>}</button><Button variant="ghost" size="sm" onClick={() => supabase.auth.signOut()} className="hidden rounded-xl text-muted-foreground md:inline-flex">
           <LogOut className="h-4 w-4" /> <span className="hidden sm:inline">Sair</span>
         </Button>
       </header>
 
 
+
+<Dialog open={profileOpen} onOpenChange={setProfileOpen}><DialogContent className="glass max-h-[88dvh] overflow-y-auto rounded-3xl sm:max-w-lg"><DialogHeader><DialogTitle>Meu perfil e minha jornada</DialogTitle></DialogHeader><div className="flex flex-col items-center gap-3"><button type="button" onClick={() => avatarInputRef.current?.click()} className="group relative flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-2 border-primary/40 bg-background">{avatarUrl ? <img src={avatarUrl} alt="Foto do perfil" className="h-full w-full object-cover"/> : <UserCircle2 className="h-12 w-12 text-muted-foreground"/>}<span className="absolute inset-0 flex items-center justify-center bg-black/55 text-white opacity-0 transition group-hover:opacity-100"><Camera className="h-6 w-6"/></span></button><input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; if (!file.type.startsWith("image/") || file.size > 5 * 1024 * 1024) { toast.error("Escolha uma imagem de até 5 MB."); return; } const path = uid + "/profile-" + crypto.randomUUID() + "-" + file.name.replace(/[^\\w.-]/g, "_"); const { error } = await supabase.storage.from("vault").upload(path, file, { contentType: file.type }); if (error) { toast.error("Falha ao enviar foto: " + error.message); return; } setProfileAvatarPath(path); event.target.value = ""; }}/><p className="text-xs text-muted-foreground">Toque na foto para alterar · até 5 MB</p></div><label className="block space-y-1 text-sm"><span className="text-muted-foreground">Nome de exibição</span><Input value={profileName} onChange={(e)=>setProfileName(e.target.value)} maxLength={40} className="rounded-xl"/></label><label className="block space-y-1 text-sm"><span className="text-muted-foreground">Início da jornada</span><Input type="date" value={journeyStart} max={new Date().toISOString().slice(0,10)} onChange={(e)=>setJourneyStart(e.target.value)} className="rounded-xl"/></label><div className="rounded-2xl border border-primary/20 bg-primary/5 p-4"><div className="flex items-center gap-3"><div className="rounded-xl bg-primary/15 p-3 text-primary"><Award className="h-6 w-6"/></div><div><p className="text-xs text-muted-foreground">Patente atual</p><p className="text-xl font-bold">{currentRank.name}</p><p className="text-sm text-muted-foreground">{journeyDays} dias de jornada</p></div></div><div className="mt-4 h-2 overflow-hidden rounded-full bg-background"><div className="h-full rounded-full bg-primary transition-all" style={{width:rankProgress + "%"}}/></div><p className="mt-2 text-xs text-muted-foreground">{nextRank ? (nextRank.days - journeyDays) + " dias para alcançar " + nextRank.name : "Você alcançou a patente máxima!"}</p></div><div className="flex flex-wrap gap-2">{rankTiers.map((tier)=><span key={tier.days} className={"rounded-full border px-2.5 py-1 text-xs " + (journeyDays >= tier.days ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-muted-foreground")}>{tier.days}d · {tier.name}</span>)}</div><Button disabled={profileSaving || !profileName.trim() || !journeyStart} className="w-full rounded-xl" onClick={async()=>{setProfileSaving(true);const {error}=await supabase.auth.updateUser({data:{display_name:profileName.trim(),avatar_path:profileAvatarPath,journey_start:journeyStart}});setProfileSaving(false);if(error){toast.error("Não foi possível salvar: "+error.message);return;}toast.success("Perfil atualizado!");setProfileOpen(false);}}>{profileSaving ? "Salvando…" : "Salvar perfil"}</Button></DialogContent></Dialog>
 
       {activeView === "vault" ? <>
       <div className="relative mt-4 sm:hidden">
