@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff2a6"/>
+      <stop offset=".42" stop-color="#ffc43d"/>
+      <stop offset="1" stop-color="#a85a08"/>
+    </linearGradient>
+    <radialGradient id="bg">
+      <stop offset="0" stop-color="#3c2108"/>
+      <stop offset="1" stop-color="#090604"/>
+    </radialGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#bg)"/>
+  <circle cx="32" cy="29" r="25" fill="none" stroke="url(#gold)" stroke-width="1.8"/>
+  <path d="M32 7v37" stroke="#ffcf55" stroke-width="1.2" opacity=".4" filter="url(#glow)"/>
+  <g fill="url(#gold)" stroke="#ffe8a0" stroke-width=".7" stroke-linejoin="round" filter="url(#glow)">
+    <path d="M28.5 16h7v23h-7z"/>
+    <path d="M19 24h26v6H19z"/>
+    <path d="M20 13l4-6 5 5 3-7 3 7 5-5 4 6-4 4H24z"/>
+  </g>
+  <path d="M11 47q10-7 21 0 11-7 21 0v8q-11-6-21 1-10-7-21-1z" fill="#f7df9a" stroke="#d99a2c" stroke-width="1.2"/>
+  <path d="M32 47v9M14 49q8-3 15 1M50 49q-8-3-15 1" fill="none" stroke="#9b5b12" stroke-width="1"/>
+  <path d="M8 58h48" stroke="url(#gold)" stroke-width="1.5" stroke-linecap="round"/>
+</svg>
