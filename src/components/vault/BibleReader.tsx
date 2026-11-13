@@ -26,8 +26,6 @@ export function BibleReader() {
   const pages = useMemo(() => { const verses = data?.verses ?? []; const result: BibleVerse[][] = []; for (let i = 0; i < verses.length; i += 12) result.push(verses.slice(i, i + 12)); return result.length ? result : [[]]; }, [data]);
   const pageCount = pages.length;
   const isLastChapter = bookSlug === books[books.length - 1].slug && chapter === selectedBook.chapters;
-  useEffect(() => { setPageIndex(0); }, [bookSlug, chapter]);
-
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
@@ -45,10 +43,28 @@ export function BibleReader() {
         if (cause instanceof Error && cause.name !== "AbortError") setError(cause.message || "Falha ao carregar a Bíblia.");
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    function turnPage(direction: "next" | "previous") {
+    return () => controller.abort();
+  }, [bookSlug, chapter]);
+
+  function changeBook(value: string) { setBookSlug(value); setChapter(1); setPageIndex(0); }
+  function next() {
+    if (chapter < selectedBook.chapters) { setChapter((v) => v + 1); setPageIndex(0); return; }
+    const index = books.findIndex((book) => book.slug === bookSlug);
+    if (index < books.length - 1) { setBookSlug(books[index + 1].slug); setChapter(1); setPageIndex(0); }
+  }
+  function previous() {
+    if (chapter > 1) { setChapter((v) => v - 1); setPageIndex(0); return; }
+    const index = books.findIndex((book) => book.slug === bookSlug);
+    if (index > 0) { setBookSlug(books[index - 1].slug); setChapter(books[index - 1].chapters); setPageIndex(0); }
+  }
+  function turnPage(direction: "next" | "previous") {
     setFlipDirection(direction);
-    if (direction === "next") { if (pageIndex < pageCount - 1) setPageIndex((v) => v + 1); else next(); }
-    else { if (pageIndex > 0) setPageIndex((v) => v - 1); else previous(); }
+    const step = typeof window !== "undefined" && window.innerWidth >= 640 ? 2 : 1;
+    if (direction === "next") {
+      if (pageIndex + step < pageCount) setPageIndex((v) => Math.min(v + step, pageCount - 1));
+      else { setPageIndex(0); next(); }
+    } else if (pageIndex > 0) setPageIndex((v) => Math.max(0, v - step));
+    else previous();
   }
   function handleTouchEnd(event: React.TouchEvent<HTMLDivElement>) {
     if (touchStartX === null) return;
