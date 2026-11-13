@@ -8,9 +8,9 @@ export function Logo({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
         <AudioWaveform className={`${compact ? "h-5 w-5" : "h-6 w-6"} text-cyan-200`} strokeWidth={2.2} />
         <Sparkles className="absolute right-1 top-1 h-3 w-3 text-white/80" />
       </div>
-      <div className="min-w-0 leading-tight">
-        <span className={`block whitespace-nowrap font-display font-bold tracking-tight text-foreground ${size === "lg" ? "text-3xl" : compact ? "text-sm" : "text-lg"}`}>OsEscolhidos</span>
-        <span className={`whitespace-nowrap font-semibold uppercase tracking-[.18em] text-cyan-200/70 ${compact ? "text-[7px]" : "text-[9px]"}`}>Fé • foco • constância</span>
+      <div className="flex min-w-0 flex-col gap-0 leading-none">
+        <span className={`block whitespace-nowrap font-display font-bold leading-none tracking-tight text-foreground ${size === "lg" ? "text-3xl" : compact ? "text-sm" : "text-lg"}`}>OsEscolhidos</span>
+        <span className={`-mt-0.5 block whitespace-nowrap font-semibold uppercase leading-none tracking-[.18em] text-cyan-200/70 ${compact ? "text-[7px]" : "text-[9px]"}`}>Fé • foco • constância</span>
       </div>
     </div>
   );
