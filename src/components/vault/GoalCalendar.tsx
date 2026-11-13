@@ -78,7 +78,6 @@ export function GoalCalendar({ session }: { session: Session }) {
     const todayKey = format(today, "yyyy-MM-dd");
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayKey = format(yesterday, "yyyy-MM-dd");
     let currentStreak = 0;
     const cursor = new Date(today);
     if (!completedSet.has(todayKey)) cursor.setDate(cursor.getDate() - 1);
