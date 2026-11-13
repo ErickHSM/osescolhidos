@@ -27,6 +27,8 @@ export function Vault({ session }: { session: Session }) {
   const [items, setItems] = useState<Item[]>([]);
   const [audioOrderIds, setAudioOrderIds] = useState<string[]>([]);
   const [listenedAudioIds, setListenedAudioIds] = useState<string[]>([]);
+  const [currentAudio, setCurrentAudio] = useState<Item | null>(null);
+  const persistentAudioUrl = useSignedUrl(currentAudio?.file_path ?? null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
@@ -308,7 +310,7 @@ export function Vault({ session }: { session: Session }) {
       return a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at);
     });
     const index = audio.findIndex((x) => x.id === i.id);
-    return <ItemCard key={i.id} item={i} categoryLabel={categoryLabel(i.category)} listened={listenedAudioIds.includes(i.id)} onToggleListened={(value) => void toggleAudioListened(i.id, value)} onPin={() => togglePin(i)} onDelete={() => remove(i)} onEditAudio={() => {setEditingAudio(i);setAudioTitle(i.title);setAudioCategory(i.category || categories[0]?.name || "");}}
+    return <ItemCard key={i.id} item={i} categoryLabel={categoryLabel(i.category)} listened={listenedAudioIds.includes(i.id)} onToggleListened={(value) => void toggleAudioListened(i.id, value)} onPlayAudio={() => setCurrentAudio(i)} isCurrentAudio={currentAudio?.id === i.id} onPin={() => togglePin(i)} onDelete={() => remove(i)} onEditAudio={() => {setEditingAudio(i);setAudioTitle(i.title);setAudioCategory(i.category || categories[0]?.name || "");}}
       onOpen={() => { if (i.kind === "note") { setEditing(i); setNoteOpen(true); } }}
       canReorder={filter === "audio" && categoryFilter === "all" && !q.trim() && i.kind === "audio"} showMoveControls={i.kind === "audio"} dragging={draggingId === i.id}
       onDragStart={() => setDraggingId(i.id)} onDragEnd={() => setDraggingId(null)}
@@ -458,7 +460,7 @@ function PdfCard({ item, onDelete }: { item: Item; onDelete: () => void }) {
   );
 }
 
-function ItemCard({ item, categoryLabel, listened, onToggleListened, onPin, onDelete, onOpen, onEditAudio, canReorder, showMoveControls, dragging, onDragStart, onDragEnd, onDrop, onMoveUp, onMoveDown, onMoveFirst }: { item: Item; categoryLabel: string; listened: boolean; onToggleListened: (value: boolean) => void; onPin: () => void; onDelete: () => void; onOpen: () => void; onEditAudio: () => void; canReorder: boolean; showMoveControls: boolean; dragging: boolean; onDragStart: () => void; onDragEnd: () => void; onDrop: () => void; onMoveUp: () => void; onMoveDown: () => void; onMoveFirst: () => void }) {
+function ItemCard({ item, categoryLabel, listened, onToggleListened, onPlayAudio, isCurrentAudio, onPin, onDelete, onOpen, onEditAudio, canReorder, showMoveControls, dragging, onDragStart, onDragEnd, onDrop, onMoveUp, onMoveDown, onMoveFirst }: { item: Item; categoryLabel: string; listened: boolean; onToggleListened: (value: boolean) => void; onPlayAudio: () => void; isCurrentAudio: boolean; onPin: () => void; onDelete: () => void; onOpen: () => void; onEditAudio: () => void; canReorder: boolean; showMoveControls: boolean; dragging: boolean; onDragStart: () => void; onDragEnd: () => void; onDrop: () => void; onMoveUp: () => void; onMoveDown: () => void; onMoveFirst: () => void }) {
   const url = useSignedUrl(item.kind === "note" ? null : item.file_path);
   const Icon = item.kind === "note" ? StickyNote : item.kind === "audio" ? AudioLines : Paperclip;
   const isImage = item.mime_type?.startsWith("image/");
@@ -487,7 +489,7 @@ function ItemCard({ item, categoryLabel, listened, onToggleListened, onPin, onDe
         {item.kind === "note" && (
           <p onClick={onOpen} className="line-clamp-5 cursor-pointer whitespace-pre-wrap text-sm text-muted-foreground">{item.content || "—"}</p>
         )}
-        {item.kind === "audio" && <div className="space-y-2">{url ? <audio controls src={url} onEnded={() => onToggleListened(true)} className="w-full" /> : <div className="h-12 animate-pulse rounded-xl bg-muted" />}<button type="button" onClick={() => onToggleListened(!listened)} className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition ${listened ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "border-border text-muted-foreground hover:border-primary/40 hover:text-primary"}`}><span className={`flex h-4 w-4 items-center justify-center rounded-full border ${listened ? "border-emerald-400 bg-emerald-400 text-[#10151d]" : "border-current"}`}>{listened ? "✓" : ""}</span>{listened ? "Escutado" : "Marcar como escutado"}</button></div>}
+        {item.kind === "audio" && <div className="space-y-2"><button type="button" onClick={onPlayAudio} className="w-full rounded-xl border border-border bg-background/40 px-3 py-3 text-sm font-semibold text-foreground hover:bg-accent">{isCurrentAudio ? "Áudio selecionado no player fixo" : "▶ Tocar no player fixo"}</button><button type="button" onClick={() => onToggleListened(!listened)} className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition ${listened ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "border-border text-muted-foreground hover:border-primary/40 hover:text-primary"}`}><span className={`flex h-4 w-4 items-center justify-center rounded-full border ${listened ? "border-emerald-400 bg-emerald-400 text-[#10151d]" : "border-current"}`}>{listened ? "✓" : ""}</span>{listened ? "Escutado" : "Marcar como escutado"}</button></div>}
         {item.kind === "file" && isImage && url && <img src={url} alt={item.title} className="max-h-48 w-full rounded-xl object-cover" />}
       </div>
 
