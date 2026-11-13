@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { addMonths, eachDayOfInterval, endOfMonth, endOfWeek, format, isSameDay, isSameMonth, isToday, parseISO, startOfMonth, startOfWeek, subMonths } from "date-fns";
+import { addMonths, eachDayOfInterval, endOfMonth, endOfWeek, format, isSameMonth, isToday, startOfMonth, startOfWeek, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { CalendarDays, ChevronLeft, ChevronRight, Check, X, Clock3, Plus, Target, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -67,6 +67,7 @@ export function GoalCalendar({ session }: { session: Session }) {
   }), [goals]);
 
   function openNew(date: Date) {
+    if (!isSameMonth(date, month)) setMonth(startOfMonth(date));
     setEditing(null);
     setSelectedDate(format(date, "yyyy-MM-dd"));
     setTitle("");
@@ -111,12 +112,6 @@ export function GoalCalendar({ session }: { session: Session }) {
     toast.success("Meta excluída");
     setDialogOpen(false);
     await load();
-  }
-
-  async function setGoalStatus(goal: Goal, next: GoalStatus) {
-    const { error } = await supabase.from("goals").update({ status: next, updated_at: new Date().toISOString() }).eq("id", goal.id).eq("user_id", uid);
-    if (error) { toast.error("Não foi possível atualizar o status"); return; }
-    setGoals((current) => current.map((item) => item.id === goal.id ? { ...item, status: next } : item));
   }
 
   const weekDays = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
