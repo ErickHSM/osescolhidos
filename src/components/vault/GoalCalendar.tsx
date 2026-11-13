@@ -29,7 +29,8 @@ const statusStyles: Record<GoalStatus, string> = {
 export function GoalCalendar({ session }: { session: Session }) {
   const uid = session.user.id;
   const [month, setMonth] = useState(new Date());
-  const [goals, setGoals] = useState<Goal[]>([]);\n  const [history, setHistory] = useState<Array<Pick<Goal, "goal_date" | "status">>>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [history, setHistory] = useState<Array<Pick<Goal, "goal_date" | "status">>>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
