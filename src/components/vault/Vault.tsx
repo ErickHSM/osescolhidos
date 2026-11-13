@@ -117,6 +117,17 @@ export function Vault({ session }: { session: Session }) {
     (!q.trim() || item.title.toLowerCase().includes(q.trim().toLowerCase()))
   ), [items, q]);
 
+  const audioGroups = useMemo(() => {
+    const audio = visible.filter((item) => item.kind === "audio");
+    const groups = categories.map((category) => ({
+      id: category.id, name: category.name,
+      items: audio.filter((item) => item.category === category.name),
+    })).filter((group) => group.items.length > 0);
+    const uncategorized = audio.filter((item) => !categories.some((category) => category.name === item.category));
+    if (uncategorized.length) groups.push({ id: "uncategorized", name: "Sem categoria", items: uncategorized });
+    return groups;
+  }, [visible, categories]);
+
   async function uploadBlob(blob: Blob, name: string, kind: "audio" | "file") {
     const path = `${uid}/${crypto.randomUUID()}-${name.replace(/[^\w.-]/g, "_")}`;
     const { error: upErr } = await supabase.storage.from("vault").upload(path, blob, { contentType: blob.type || undefined });
@@ -290,8 +301,25 @@ export function Vault({ session }: { session: Session }) {
     { key: "file", label: "Arquivos", icon: Paperclip },
   ];
 
+  function renderItemCard(i: Item) {
+    const audio = items.filter((x) => x.kind === "audio").sort((a, b) => {
+      const ai = audioOrderIds.indexOf(a.id), bi = audioOrderIds.indexOf(b.id);
+      if (ai >= 0 || bi >= 0) return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi);
+      return a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at);
+    });
+    const index = audio.findIndex((x) => x.id === i.id);
+    return <ItemCard key={i.id} item={i} categoryLabel={categoryLabel(i.category)} listened={listenedAudioIds.includes(i.id)} onToggleListened={(value) => void toggleAudioListened(i.id, value)} onPin={() => togglePin(i)} onDelete={() => remove(i)} onEditAudio={() => {setEditingAudio(i);setAudioTitle(i.title);setAudioCategory(i.category || categories[0]?.name || "");}}
+      onOpen={() => { if (i.kind === "note") { setEditing(i); setNoteOpen(true); } }}
+      canReorder={filter === "audio" && categoryFilter === "all" && !q.trim() && i.kind === "audio"} showMoveControls={i.kind === "audio"} dragging={draggingId === i.id}
+      onDragStart={() => setDraggingId(i.id)} onDragEnd={() => setDraggingId(null)}
+      onDrop={() => { if (draggingId) void moveAudio(draggingId, i.id); setDraggingId(null); }}
+      onMoveUp={() => { if (index > 0) void moveAudio(i.id, audio[index - 1].id); }}
+      onMoveDown={() => { if (index >= 0 && index < audio.length - 1) void moveAudio(i.id, audio[index + 1].id); }}
+      onMoveFirst={() => { const first = audio[0]; if (first && first.id !== i.id) void moveAudio(i.id, first.id); }} />;
+  }
+
   return (
-    <div className="min-h-screen w-full md:pl-64"><aside className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-border/70 bg-[#10151d]/95 p-5 backdrop-blur-2xl transition-transform md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}><div className="flex justify-center"><Logo /></div><p className="mb-3 mt-10 px-3 text-[10px] font-bold uppercase tracking-[.22em] text-muted-foreground">Workspace</p><button onClick={() => {setActiveView("vault");setSidebarOpen(false);}} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${activeView === "vault" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><LayoutGrid className="h-4 w-4"/> Meu cofre</button><button onClick={() => {setActiveView("goals");setSidebarOpen(false);}} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${activeView === "goals" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><CalendarDays className="h-4 w-4"/> Metas</button><button onClick={() => {setActiveView("pdfs");setSidebarOpen(false);setQ("");}} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${activeView === "pdfs" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><FileText className="h-4 w-4"/> PDFs <span className="ml-auto text-xs opacity-60">{items.filter((item)=>item.kind==="file"&&(item.mime_type==="application/pdf"||item.title.toLowerCase().endsWith(".pdf"))).length}</span></button><div className="mt-8 flex items-center justify-between px-3"><span className="text-[10px] font-bold uppercase tracking-[.22em] text-muted-foreground">Categorias</span><button onClick={() => {setActiveView("vault");setEditingCategory(null);setCategoryName("");setCategoryManagerOpen(true);}} aria-label="Criar categoria" className="rounded-lg p-1.5 text-muted-foreground hover:bg-white/10 hover:text-primary"><FolderPlus className="h-4 w-4"/></button></div><div className="mt-2 space-y-1">{categories.map((category) => <button key={category.id} onClick={() => {setActiveView("vault");setFilter("audio");setCategoryFilter(category.name);setSidebarOpen(false);}} className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm ${categoryFilter === category.name && filter === "audio" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><span className="flex min-w-0 items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full bg-primary/70"/><span className="truncate">{category.name}</span></span><span className="text-xs opacity-60">{items.filter((i)=>i.kind==="audio"&&i.category===category.name).length}</span></button>)}</div><div className="mt-auto border-t border-border/70 pt-4"><p className="truncate px-3 text-xs text-muted-foreground">{session.user.email}</p><button onClick={() => supabase.auth.signOut()} className="mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-muted-foreground hover:bg-white/5"><LogOut className="h-4 w-4"/> Sair</button></div></aside>{sidebarOpen && <button onClick={()=>setSidebarOpen(false)} aria-label="Fechar menu" className="fixed inset-0 z-30 bg-black/60 md:hidden"/>}<main className="mx-auto w-full max-w-6xl px-3 pb-20 pt-3 sm:px-6 sm:pt-6 md:px-8">
+    <div className="min-h-screen w-full md:pl-64"><aside className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-white/10 bg-[rgba(34,36,40,0.68)] p-5 shadow-[12px_0_40px_rgba(0,0,0,0.22)] backdrop-blur-2xl backdrop-saturate-150 transition-transform md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}><div className="flex justify-center"><Logo /></div><p className="mb-3 mt-10 px-3 text-[10px] font-bold uppercase tracking-[.22em] text-muted-foreground">Workspace</p><button onClick={() => {setActiveView("vault");setSidebarOpen(false);}} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${activeView === "vault" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><LayoutGrid className="h-4 w-4"/> Meu cofre</button><button onClick={() => {setActiveView("goals");setSidebarOpen(false);}} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${activeView === "goals" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><CalendarDays className="h-4 w-4"/> Metas</button><button onClick={() => {setActiveView("pdfs");setSidebarOpen(false);setQ("");}} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${activeView === "pdfs" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><FileText className="h-4 w-4"/> PDFs <span className="ml-auto text-xs opacity-60">{items.filter((item)=>item.kind==="file"&&(item.mime_type==="application/pdf"||item.title.toLowerCase().endsWith(".pdf"))).length}</span></button><div className="mt-8 flex items-center justify-between px-3"><span className="text-[10px] font-bold uppercase tracking-[.22em] text-muted-foreground">Categorias</span><button onClick={() => {setActiveView("vault");setEditingCategory(null);setCategoryName("");setCategoryManagerOpen(true);}} aria-label="Criar categoria" className="rounded-lg p-1.5 text-muted-foreground hover:bg-white/10 hover:text-primary"><FolderPlus className="h-4 w-4"/></button></div><div className="mt-2 space-y-1">{categories.map((category) => <button key={category.id} onClick={() => {setActiveView("vault");setFilter("audio");setCategoryFilter(category.name);setSidebarOpen(false);}} className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm ${categoryFilter === category.name && filter === "audio" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><span className="flex min-w-0 items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full bg-primary/70"/><span className="truncate">{category.name}</span></span><span className="text-xs opacity-60">{items.filter((i)=>i.kind==="audio"&&i.category===category.name).length}</span></button>)}</div><div className="mt-auto border-t border-border/70 pt-4"><p className="truncate px-3 text-xs text-muted-foreground">{session.user.email}</p><button onClick={() => supabase.auth.signOut()} className="mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-muted-foreground hover:bg-white/5"><LogOut className="h-4 w-4"/> Sair</button></div></aside>{sidebarOpen && <button onClick={()=>setSidebarOpen(false)} aria-label="Fechar menu" className="fixed inset-0 z-30 bg-black/60 md:hidden"/>}<main className="mx-auto w-full max-w-6xl px-3 pb-20 pt-3 sm:px-6 sm:pt-6 md:px-8">
       <header className="glass sticky top-2 z-20 flex items-center justify-between gap-2 rounded-2xl px-3 py-2.5 sm:top-4 sm:gap-3 sm:px-4 sm:py-3">
         <div className="flex items-center gap-2"><button onClick={() => setSidebarOpen(true)} aria-label="Abrir menu" className="rounded-xl p-2 text-muted-foreground hover:bg-white/5 md:hidden"><Menu className="h-5 w-5"/></button><div className="md:hidden"><Logo size="sm" /></div></div>
         {activeView !== "goals" && <div className="relative hidden max-w-sm flex-1 sm:block">
@@ -347,16 +375,19 @@ export function Vault({ session }: { session: Session }) {
             Nada aqui ainda. Crie uma anotação, grave um áudio ou envie um arquivo.
           </div>
         ) : (
-          visible.map((i) => (
-            <ItemCard key={i.id} item={i} categoryLabel={categoryLabel(i.category)} listened={listenedAudioIds.includes(i.id)} onToggleListened={(value) => void toggleAudioListened(i.id, value)} onPin={() => togglePin(i)} onDelete={() => remove(i)} onEditAudio={() => {setEditingAudio(i);setAudioTitle(i.title);setAudioCategory(i.category || categories[0]?.name || "");}}
-              onOpen={() => { if (i.kind === "note") { setEditing(i); setNoteOpen(true); } }}
-              canReorder={filter === "audio" && categoryFilter === "all" && !q.trim() && i.kind === "audio"} showMoveControls={i.kind === "audio"} dragging={draggingId === i.id}
-              onDragStart={() => setDraggingId(i.id)} onDragEnd={() => setDraggingId(null)}
-              onDrop={() => { if (draggingId) void moveAudio(draggingId, i.id); setDraggingId(null); }}
-              onMoveUp={() => { const audio = items.filter((x) => x.kind === "audio").sort((a, b) => { const ai = audioOrderIds.indexOf(a.id); const bi = audioOrderIds.indexOf(b.id); if (ai >= 0 || bi >= 0) return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi); return a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at); }); const index = audio.findIndex((x) => x.id === i.id); if (index > 0) void moveAudio(i.id, audio[index - 1].id); }}
-              onMoveDown={() => { const audio = items.filter((x) => x.kind === "audio").sort((a, b) => { const ai = audioOrderIds.indexOf(a.id); const bi = audioOrderIds.indexOf(b.id); if (ai >= 0 || bi >= 0) return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi); return a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at); }); const index = audio.findIndex((x) => x.id === i.id); if (index >= 0 && index < audio.length - 1) void moveAudio(i.id, audio[index + 1].id); }}
-              onMoveFirst={() => { const audio = items.filter((x) => x.kind === "audio").sort((a, b) => { const ai = audioOrderIds.indexOf(a.id); const bi = audioOrderIds.indexOf(b.id); if (ai >= 0 || bi >= 0) return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi); return a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at); }); const first = audio[0]; if (first && first.id !== i.id) void moveAudio(i.id, first.id); }} />
-          ))
+          {filter === "audio" && categoryFilter === "all" ? (
+            <div className="col-span-full space-y-8">
+              {audioGroups.length === 0 ? <div className="glass rounded-2xl p-10 text-center text-muted-foreground">Nenhum áudio encontrado.</div> : audioGroups.map((group) => (
+                <section key={group.id} className="space-y-3">
+                  <div className="flex items-center justify-between border-b border-border/70 pb-2">
+                    <h2 className="flex items-center gap-2 text-lg font-semibold"><span className="h-2.5 w-2.5 rounded-full bg-primary/70"/>{group.name}</h2>
+                    <span className="text-xs text-muted-foreground">{group.items.length} {group.items.length === 1 ? "áudio" : "áudios"}</span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">{group.items.map(renderItemCard)}</div>
+                </section>
+              ))}
+            </div>
+          ) : visible.map(renderItemCard)}
         )}
       </section>
 
