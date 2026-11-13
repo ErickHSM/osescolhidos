@@ -10,7 +10,7 @@ export function Logo({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
       </div>
       <div className="flex min-w-0 flex-col gap-0 leading-none">
         <span className={`block whitespace-nowrap font-display font-bold leading-none tracking-tight text-foreground ${size === "lg" ? "text-3xl" : compact ? "text-sm" : "text-lg"}`}>OsEscolhidos</span>
-        <span className={`-mt-0.5 block whitespace-nowrap font-semibold uppercase leading-none tracking-[.18em] text-cyan-200/70 ${compact ? "text-[7px]" : "text-[9px]"}`}>Fé • foco • constância</span>
+        <span className={`mt-1 block whitespace-nowrap font-semibold uppercase leading-[1.2] tracking-[.18em] text-cyan-200/70 ${compact ? "text-[7px]" : "text-[9px]"}`}>Fé • foco • constância</span>
       </div>
     </div>
   );
