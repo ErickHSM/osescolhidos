@@ -13,6 +13,9 @@ import { GoalCalendar } from "./GoalCalendar";
 
 type Item = Tables<"items">;
 type Filter = "all" | "note" | "audio" | "file";
+type AudioCategory = "oracoes" | "recaidas" | "testemunhos" | "estudos" | "louvores" | "outros";
+const audioCategories: { value: AudioCategory; label: string }[] = [{"value":"oracoes","label":"Orações"},{"value":"recaidas","label":"Recaídas"},{"value":"testemunhos","label":"Testemunhos"},{"value":"estudos","label":"Estudos bíblicos"},{"value":"louvores","label":"Louvores"},{"value":"outros","label":"Outros"}];
+const categoryLabel = (value: string | null) => audioCategories.find((category) => category.value === value)?.label ?? "Outros";
 
 const fmtSize = (b?: number | null) =>
   !b ? "" : b < 1024 * 1024 ? `${(b / 1024).toFixed(0)} KB` : `${(b / 1024 / 1024).toFixed(1)} MB`;
@@ -29,6 +32,8 @@ export function Vault({ session }: { session: Session }) {
   const [editing, setEditing] = useState<Item | null>(null);
   const [recOpen, setRecOpen] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [selectedAudioCategory, setSelectedAudioCategory] = useState<AudioCategory>("oracoes");
+  const [categoryFilter, setCategoryFilter] = useState<AudioCategory | "all">("all");
   const [activeView, setActiveView] = useState<"vault" | "goals">("vault");
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -43,10 +48,10 @@ export function Vault({ session }: { session: Session }) {
 
   const visible = useMemo(() => {
     const s = q.trim().toLowerCase();
-    const filtered = items.filter((i) => (filter === "all" || i.kind === filter) && (!s || i.title.toLowerCase().includes(s) || (i.content ?? "").toLowerCase().includes(s)));
+    const filtered = items.filter((i) => (filter === "all" || i.kind === filter) && (filter !== "audio" || categoryFilter === "all" || i.category === categoryFilter) && (!s || i.title.toLowerCase().includes(s) || (i.content ?? "").toLowerCase().includes(s)));
     if (filter === "audio") return filtered.sort((a, b) => a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at));
     return filtered;
-  }, [items, filter, q]);
+  }, [items, filter, q, categoryFilter]);
 
   const counts = useMemo(() => ({
     all: items.length,
@@ -64,7 +69,7 @@ export function Vault({ session }: { session: Session }) {
       const { data: lastAudio } = await supabase.from("items").select("sort_order").eq("user_id", uid).eq("kind", "audio").order("sort_order", { ascending: false }).limit(1).maybeSingle();
       sortOrder = (lastAudio?.sort_order ?? -1) + 1;
     }
-    const { error } = await supabase.from("items").insert({ user_id: uid, kind, title: name, file_path: path, mime_type: blob.type, size_bytes: blob.size, sort_order: sortOrder });
+    const { error } = await supabase.from("items").insert({ user_id: uid, kind, title: name, file_path: path, mime_type: blob.type, size_bytes: blob.size, sort_order: sortOrder, category: kind === "audio" ? selectedAudioCategory : "outros" });
     if (error) { toast.error(error.message); return; }
     toast.success(kind === "audio" ? "Áudio salvo" : "Arquivo salvo");
     load();
@@ -129,8 +134,8 @@ export function Vault({ session }: { session: Session }) {
   ];
 
   return (
-    <div className="mx-auto max-w-6xl px-4 pb-24 pt-6 sm:px-6">
-      <header className="glass sticky top-4 z-20 flex items-center justify-between gap-3 rounded-2xl px-4 py-3">
+    <div className="mx-auto w-full max-w-6xl px-3 pb-24 pt-3 sm:px-6 sm:pt-6">
+      <header className="glass sticky top-2 z-20 flex items-center justify-between gap-2 rounded-2xl px-3 py-2.5 sm:top-4 sm:gap-3 sm:px-4 sm:py-3">
         <Logo />
         {activeView === "vault" && <div className="relative hidden max-w-sm flex-1 sm:block">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -141,8 +146,8 @@ export function Vault({ session }: { session: Session }) {
         </Button>
       </header>
 
-      <nav className="mt-5 flex gap-2 rounded-2xl glass p-1.5">
-        <button onClick={() => setActiveView("vault")} className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${activeView === "vault" ? "bg-primary text-primary-foreground glow" : "text-muted-foreground hover:text-foreground"}`}><LayoutGrid className="h-4 w-4" /> Meu cofre</button>
+      <nav className="glass sticky top-[4.5rem] z-10 mt-3 flex gap-1 rounded-2xl p-1 sm:static sm:mt-5 sm:gap-2 sm:p-1.5">
+        <button onClick={() => setActiveView("vault")} className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-xs font-semibold transition sm:gap-2 sm:px-4 sm:text-sm ${activeView === "vault" ? "bg-primary text-primary-foreground glow" : "text-muted-foreground hover:text-foreground"}`}><LayoutGrid className="h-4 w-4" /> Meu cofre</button>
         <button onClick={() => setActiveView("goals")} className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${activeView === "goals" ? "bg-primary text-primary-foreground glow" : "text-muted-foreground hover:text-foreground"}`}><CalendarDays className="h-4 w-4" /> Metas</button>
       </nav>
 
@@ -161,8 +166,13 @@ export function Vault({ session }: { session: Session }) {
         <ActionCard icon={FileText} title="Nova anotação" desc="Escreva e guarde ideias" onClick={() => { setEditing(null); setNoteOpen(true); }} />
         <ActionCard icon={Mic} title="Gravar áudio" desc="Grave direto do microfone" onClick={() => setRecOpen(true)} />
         <ActionCard icon={Upload} title="Enviar arquivo" desc="Áudios, imagens, PDFs… até 50 MB" onClick={() => fileRef.current?.click()} />
-        <input ref={fileRef} type="file" multiple hidden onChange={(e) => onFiles(e.target.files)} />
+        <input ref={fileRef} type="file" multiple accept="audio/*,image/*,.pdf,.doc,.docx,.txt" hidden onChange={(e) => onFiles(e.target.files)} />
       </section>
+
+      <div className="glass mt-4 flex flex-col gap-2 rounded-2xl p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div><p className="text-sm font-semibold">Categoria dos próximos áudios</p><p className="text-xs text-muted-foreground">Escolha antes de gravar ou enviar um áudio</p></div>
+        <select aria-label="Categoria dos próximos áudios" value={selectedAudioCategory} onChange={(e) => setSelectedAudioCategory(e.target.value as AudioCategory)} className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm sm:max-w-xs">{audioCategories.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}</select>
+      </div>
 
       <nav className="mt-8 flex gap-2 overflow-x-auto pb-1">
         {tabs.map((t) => (
@@ -174,7 +184,7 @@ export function Vault({ session }: { session: Session }) {
         ))}
       </nav>
 
-      {filter === "audio" && <p className="mt-4 text-sm text-muted-foreground">Arraste os áudios para mudar a ordem ou use as setas. A ordem fica salva na sua conta. Para reorganizar, limpe a busca.</p>}
+      {filter === "audio" && <><div className="mt-4 flex gap-2 overflow-x-auto pb-1">{[{value:"all",label:"Todas"}, ...audioCategories].map((category) => <button key={category.value} onClick={() => setCategoryFilter(category.value as AudioCategory | "all")} className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition ${categoryFilter === category.value ? "border-primary/50 bg-primary/15 text-primary" : "border-border text-muted-foreground hover:bg-accent"}`}>{category.label}</button>)}</div><p className="mt-2 text-xs text-muted-foreground">Arraste para reorganizar ou use as setas. A ordem fica salva na sua conta. Para reorganizar a lista completa, selecione “Todas” e limpe a busca.</p></>}
       <section className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {loading ? (
           <p className="text-muted-foreground">Carregando…</p>
@@ -184,9 +194,9 @@ export function Vault({ session }: { session: Session }) {
           </div>
         ) : (
           visible.map((i) => (
-            <ItemCard key={i.id} item={i} onPin={() => togglePin(i)} onDelete={() => remove(i)}
+            <ItemCard key={i.id} item={i} categoryLabel={categoryLabel(i.category)} onPin={() => togglePin(i)} onDelete={() => remove(i)}
               onOpen={() => { if (i.kind === "note") { setEditing(i); setNoteOpen(true); } }}
-              canReorder={filter === "audio" && !q.trim() && i.kind === "audio"} dragging={draggingId === i.id}
+              canReorder={filter === "audio" && categoryFilter === "all" && !q.trim() && i.kind === "audio"} dragging={draggingId === i.id}
               onDragStart={() => setDraggingId(i.id)} onDragEnd={() => setDraggingId(null)}
               onDrop={() => { if (draggingId) void moveAudio(draggingId, i.id); setDraggingId(null); }}
               onMoveUp={() => { const audio = visible.filter((x) => x.kind === "audio"); const index = audio.findIndex((x) => x.id === i.id); if (index > 0) void moveAudio(i.id, audio[index - 1].id); }}
@@ -225,7 +235,7 @@ function useSignedUrl(path: string | null) {
   return url;
 }
 
-function ItemCard({ item, onPin, onDelete, onOpen, canReorder, dragging, onDragStart, onDragEnd, onDrop, onMoveUp, onMoveFirst }: { item: Item; onPin: () => void; onDelete: () => void; onOpen: () => void; canReorder: boolean; dragging: boolean; onDragStart: () => void; onDragEnd: () => void; onDrop: () => void; onMoveUp: () => void; onMoveFirst: () => void }) {
+function ItemCard({ item, categoryLabel, onPin, onDelete, onOpen, canReorder, dragging, onDragStart, onDragEnd, onDrop, onMoveUp, onMoveFirst }: { item: Item; categoryLabel: string; onPin: () => void; onDelete: () => void; onOpen: () => void; canReorder: boolean; dragging: boolean; onDragStart: () => void; onDragEnd: () => void; onDrop: () => void; onMoveUp: () => void; onMoveFirst: () => void }) {
   const url = useSignedUrl(item.kind === "note" ? null : item.file_path);
   const Icon = item.kind === "note" ? StickyNote : item.kind === "audio" ? AudioLines : Paperclip;
   const isImage = item.mime_type?.startsWith("image/");
@@ -248,6 +258,7 @@ function ItemCard({ item, onPin, onDelete, onOpen, canReorder, dragging, onDragS
         </div>
       </div>
 
+      {item.kind === "audio" && <div className="mt-3"><span className="inline-flex rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary">{categoryLabel}</span></div>}
       <div className="mt-3 flex-1">
         {item.kind === "note" && (
           <p onClick={onOpen} className="line-clamp-5 cursor-pointer whitespace-pre-wrap text-sm text-muted-foreground">{item.content || "—"}</p>
