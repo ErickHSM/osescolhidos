@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { addMonths, eachDayOfInterval, endOfMonth, endOfWeek, format, isSameMonth, isToday, startOfMonth, startOfWeek, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarDays, ChevronLeft, ChevronRight, Check, X, Clock3, Plus, Target, Trash2 } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Check, X, Clock3, Plus, Target, Trash2, Flame, TrendingUp, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
@@ -29,7 +29,7 @@ const statusStyles: Record<GoalStatus, string> = {
 export function GoalCalendar({ session }: { session: Session }) {
   const uid = session.user.id;
   const [month, setMonth] = useState(new Date());
-  const [goals, setGoals] = useState<Goal[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);\n  const [history, setHistory] = useState<Array<Pick<Goal, "goal_date" | "status">>>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -48,13 +48,18 @@ export function GoalCalendar({ session }: { session: Session }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase.from("goals").select("*")
-      .eq("user_id", uid)
-      .gte("goal_date", format(monthStart, "yyyy-MM-dd"))
-      .lte("goal_date", format(monthEnd, "yyyy-MM-dd"))
-      .order("goal_date", { ascending: true });
-    if (error) toast.error("Não foi possível carregar suas metas: " + error.message);
-    setGoals(data ?? []);
+    const [monthResult, historyResult] = await Promise.all([
+      supabase.from("goals").select("*")
+        .eq("user_id", uid)
+        .gte("goal_date", format(monthStart, "yyyy-MM-dd"))
+        .lte("goal_date", format(monthEnd, "yyyy-MM-dd"))
+        .order("goal_date", { ascending: true }),
+      supabase.from("goals").select("goal_date,status").eq("user_id", uid),
+    ]);
+    if (monthResult.error) toast.error("Não foi possível carregar suas metas: " + monthResult.error.message);
+    if (historyResult.error) toast.error("Não foi possível calcular sua constância: " + historyResult.error.message);
+    setGoals(monthResult.data ?? []);
+    setHistory(historyResult.data ?? []);
     setLoading(false);
   }, [uid, monthStart.getTime(), monthEnd.getTime()]);
 
@@ -65,6 +70,50 @@ export function GoalCalendar({ session }: { session: Session }) {
     pending: goals.filter((goal) => goal.status === "pending").length,
     failed: goals.filter((goal) => goal.status === "failed").length,
   }), [goals]);
+
+  const progress = useMemo(() => {
+    const completedDates = [...new Set(history.filter((goal) => goal.status === "completed").map((goal) => goal.goal_date))].sort();
+    const completedSet = new Set(completedDates);
+    const today = new Date();
+    const todayKey = format(today, "yyyy-MM-dd");
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayKey = format(yesterday, "yyyy-MM-dd");
+    let currentStreak = 0;
+    const cursor = new Date(today);
+    if (!completedSet.has(todayKey)) cursor.setDate(cursor.getDate() - 1);
+    if (completedSet.has(format(cursor, "yyyy-MM-dd"))) {
+      while (completedSet.has(format(cursor, "yyyy-MM-dd"))) {
+        currentStreak += 1;
+        cursor.setDate(cursor.getDate() - 1);
+      }
+    }
+    let bestStreak = 0;
+    let run = 0;
+    let previous: Date | null = null;
+    for (const key of completedDates) {
+      const [year, monthValue, day] = key.split("-").map(Number);
+      const date = new Date(year, monthValue - 1, day);
+      const gap = previous ? Math.round((date.getTime() - previous.getTime()) / 86400000) : 0;
+      run = previous && gap === 1 ? run + 1 : 1;
+      bestStreak = Math.max(bestStreak, run);
+      previous = date;
+    }
+    const weekStart = new Date(today);
+    weekStart.setDate(weekStart.getDate() - 6);
+    const weekKey = format(weekStart, "yyyy-MM-dd");
+    const todayGoals = history.filter((goal) => goal.goal_date >= weekKey && goal.goal_date <= todayKey && (goal.status === "completed" || goal.status === "failed"));
+    const weekCompleted = todayGoals.filter((goal) => goal.status === "completed").length;
+    const monthResolved = summary.completed + summary.failed;
+    return {
+      currentStreak,
+      bestStreak,
+      weekRate: todayGoals.length ? Math.round((weekCompleted / todayGoals.length) * 100) : 0,
+      weekResolved: todayGoals.length,
+      monthRate: monthResolved ? Math.round((summary.completed / monthResolved) * 100) : 0,
+      monthResolved,
+    };
+  }, [history, summary]);
 
   function openNew(date: Date) {
     if (!isSameMonth(date, month)) setMonth(startOfMonth(date));
@@ -125,6 +174,34 @@ export function GoalCalendar({ session }: { session: Session }) {
           <p className="mt-1 text-sm text-muted-foreground">Planeje seus dias e acompanhe o que conseguiu cumprir.</p>
         </div>
         <Button onClick={() => openNew(new Date())} className="glow rounded-xl"><Plus className="mr-2 h-4 w-4" /> Nova meta</Button>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="glass rounded-2xl p-4">
+          <div className="flex items-center gap-2 text-orange-300"><Flame className="h-4 w-4" /><span className="text-sm font-medium">Sequência atual</span></div>
+          <div className="mt-2 flex items-baseline gap-2"><span className="text-3xl font-semibold tabular-nums">{progress.currentStreak}</span><span className="text-xs text-muted-foreground">{progress.currentStreak === 1 ? "dia seguido" : "dias seguidos"}</span></div>
+          <p className="mt-1 text-xs text-muted-foreground">Complete ao menos uma meta por dia.</p>
+        </div>
+        <div className="glass rounded-2xl p-4">
+          <div className="flex items-center gap-2 text-primary"><Trophy className="h-4 w-4" /><span className="text-sm font-medium">Seu recorde</span></div>
+          <div className="mt-2 flex items-baseline gap-2"><span className="text-3xl font-semibold tabular-nums">{progress.bestStreak}</span><span className="text-xs text-muted-foreground">{progress.bestStreak === 1 ? "dia" : "dias"}</span></div>
+          <p className="mt-1 text-xs text-muted-foreground">Maior sequência de dias com metas concluídas.</p>
+        </div>
+        <div className="glass rounded-2xl p-4">
+          <div className="flex items-center gap-2 text-emerald-300"><TrendingUp className="h-4 w-4" /><span className="text-sm font-medium">Evolução</span></div>
+          <div className="mt-2 flex items-baseline gap-2"><span className="text-3xl font-semibold tabular-nums">{progress.monthRate}%</span><span className="text-xs text-muted-foreground">este mês</span></div>
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-secondary"><div className="h-full rounded-full bg-emerald-400 transition-all" style={{ width: `${progress.monthRate}%` }} /></div>
+          <p className="mt-1 text-xs text-muted-foreground">{summary.completed} de {progress.monthResolved} metas avaliadas concluídas.</p>
+        </div>
+      </div>
+
+      <div className="glass rounded-2xl p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div><h2 className="font-semibold">Últimos 7 dias</h2><p className="text-xs text-muted-foreground">Aproveitamento das metas que você já avaliou</p></div>
+          <span className="text-2xl font-semibold tabular-nums">{progress.weekRate}%</span>
+        </div>
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-secondary"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress.weekRate}%` }} /></div>
+        <p className="mt-2 text-xs text-muted-foreground">{progress.weekResolved} {progress.weekResolved === 1 ? "meta avaliada" : "metas avaliadas"} nos últimos 7 dias. Pendentes não entram no cálculo.</p>
       </div>
 
       <div className="grid grid-cols-3 gap-2">
