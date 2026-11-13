@@ -23,7 +23,8 @@ export function BibleReader() {
   const [isCoverOpen, setIsCoverOpen] = useState(false);
   const [coverOpening, setCoverOpening] = useState(false);
   const [speechStatus, setSpeechStatus] = useState<"idle" | "playing" | "paused">("idle");
-  const [speechRate, setSpeechRate] = useState(1);
+  const [speechRate, setSpeechRate] = useState(0.95);
+  const [speechPitch, setSpeechPitch] = useState(0.65);
   const selectedBook = books.find((book) => book.slug === bookSlug) ?? books[0];
   const oldTestament = useMemo(() => books.filter((book) => book.testament === "Antigo Testamento"), []);
   const newTestament = useMemo(() => books.filter((book) => book.testament === "Novo Testamento"), []);
@@ -52,6 +53,7 @@ export function BibleReader() {
     const utterance = new SpeechSynthesisUtterance(data.verses.map((verse) => verse.t).join(" "));
     utterance.lang = "pt-BR";
     utterance.rate = speechRate;
+    utterance.pitch = speechPitch;
     const voices = window.speechSynthesis.getVoices();
     const voice = voices.find((item) => item.lang.toLowerCase() === "pt-br") || voices.find((item) => item.lang.toLowerCase().startsWith("pt"));
     if (voice) utterance.voice = voice;
@@ -148,7 +150,7 @@ export function BibleReader() {
       </section>
       {isCoverOpen && <div className="mx-auto mb-4 flex max-w-5xl flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/20 p-3 text-[#f5e6cd]">
           <div className="flex items-center gap-2"><Volume2 className="h-5 w-5 text-[#d9bd82]"/><div><p className="text-sm font-semibold">Ouvir a Bíblia</p><p className="text-xs text-[#e8d6b8]/75">{speechStatus === "playing" ? "Lendo este capítulo…" : speechStatus === "paused" ? "Leitura pausada" : "Escute este capítulo em voz alta"}</p></div></div>
-          <div className="flex flex-wrap items-center gap-2"><label className="flex items-center gap-2 text-xs">Velocidade<select aria-label="Velocidade da leitura" value={speechRate} onChange={(event) => setSpeechRate(Number(event.target.value))} className="rounded-lg border border-white/15 bg-[#29231d] px-2 py-1.5 text-[#f5e6cd]"><option value={0.8}>0,8×</option><option value={1}>1×</option><option value={1.2}>1,2×</option><option value={1.5}>1,5×</option></select></label>
+          <div className="flex flex-wrap items-center gap-2"><label className="flex items-center gap-2 text-xs">Voz<select aria-label="Tom da voz" value={speechPitch} onChange={(event) => setSpeechPitch(Number(event.target.value))} className="rounded-lg border border-white/15 bg-[#29231d] px-2 py-1.5 text-[#f5e6cd]"><option value={0.5}>Bem grave</option><option value={0.65}>Grave</option><option value={0.8}>Média-grave</option><option value={1}>Natural</option></select></label><label className="flex items-center gap-2 text-xs">Velocidade<select aria-label="Velocidade da leitura" value={speechRate} onChange={(event) => setSpeechRate(Number(event.target.value))} className="rounded-lg border border-white/15 bg-[#29231d] px-2 py-1.5 text-[#f5e6cd]"><option value={0.8}>0,8×</option><option value={0.95}>1×</option><option value={1.2}>1,2×</option><option value={1.5}>1,5×</option></select></label>
           <Button type="button" size="sm" onClick={toggleReading} disabled={loading || !!error || !data?.verses?.length} className="rounded-xl bg-[#b58b4c] text-[#21180e] hover:bg-[#c99d5a]">{speechStatus === "playing" ? <><Pause className="mr-1 h-4 w-4"/> Pausar</> : speechStatus === "paused" ? <><Play className="mr-1 h-4 w-4"/> Continuar</> : <><Play className="mr-1 h-4 w-4"/> Ouvir capítulo</>}</Button>
           {speechStatus !== "idle" && <Button type="button" size="sm" variant="outline" onClick={stopReading} className="rounded-xl border-white/20 text-[#f5e6cd] hover:bg-white/10"><Square className="mr-1 h-3.5 w-3.5"/> Parar</Button>}</div></div>}
         <div className="bible-book mx-auto max-w-5xl rounded-[22px] p-3 sm:p-5">
