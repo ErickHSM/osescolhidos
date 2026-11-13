@@ -14,6 +14,12 @@ export type Database = {
   }
   public: {
     Tables: {
+      audio_categories: {
+        Row: { id: string; user_id: string; name: string; created_at: string }
+        Insert: { id?: string; user_id: string; name: string; created_at?: string }
+        Update: { id?: string; user_id?: string; name?: string; created_at?: string }
+        Relationships: []
+      }
       items: {
         Row: {
           content: string | null
