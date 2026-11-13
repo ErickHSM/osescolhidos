@@ -76,12 +76,12 @@ export function BibleReader() {
   return (
     <div className="space-y-5">
       <style>{`
-        @keyframes bible-page-next { from { transform: perspective(1200px) rotateY(7deg); opacity: .65; } to { transform: perspective(1200px) rotateY(0); opacity: 1; } }
-        @keyframes bible-page-previous { from { transform: perspective(1200px) rotateY(-7deg); opacity: .65; } to { transform: perspective(1200px) rotateY(0); opacity: 1; } }
-        .bible-paper { background: linear-gradient(105deg,#f5ead0 0%,#fffaf0 18%,#fffdf6 52%,#f5ead0 100%); color:#403425; box-shadow:inset 0 0 28px rgba(110,78,35,.10),0 14px 38px rgba(0,0,0,.2); }
+        @keyframes bible-page-next { 0% { transform: perspective(1800px) rotateY(-82deg); opacity: .25; filter: brightness(.65); } 65% { transform: perspective(1800px) rotateY(8deg); opacity: 1; filter: brightness(1.08); } 100% { transform: perspective(1800px) rotateY(0); opacity: 1; filter: brightness(1); } }
+        @keyframes bible-page-previous { 0% { transform: perspective(1800px) rotateY(82deg); opacity: .25; filter: brightness(.65); } 65% { transform: perspective(1800px) rotateY(-8deg); opacity: 1; filter: brightness(1.08); } 100% { transform: perspective(1800px) rotateY(0); opacity: 1; filter: brightness(1); } }
+        .bible-paper { backface-visibility:hidden; background: linear-gradient(105deg,#f5ead0 0%,#fffaf0 18%,#fffdf6 52%,#f5ead0 100%); color:#403425; box-shadow:inset 0 0 28px rgba(110,78,35,.10),0 14px 38px rgba(0,0,0,.2); }
         .bible-page-next { animation:bible-page-next .38s ease-out both; transform-origin:left center; }
         .bible-page-previous { animation:bible-page-previous .38s ease-out both; transform-origin:right center; }
-        .bible-book { background:linear-gradient(90deg,#392516,#77502e 5%,#4b301d 10%,#674326 50%,#4b301d 90%,#77502e 95%,#392516); box-shadow:0 22px 55px rgba(0,0,0,.38); }
+        .bible-book { perspective:1800px; transform-style:preserve-3d; background:linear-gradient(90deg,#392516,#77502e 5%,#4b301d 10%,#674326 50%,#4b301d 90%,#77502e 95%,#392516); box-shadow:0 22px 55px rgba(0,0,0,.38); }
         @media(max-width:639px){.bible-book{background:transparent;box-shadow:none;padding:0}}
       `}</style>
       <section className="mx-auto max-w-3xl pt-4 text-center">
