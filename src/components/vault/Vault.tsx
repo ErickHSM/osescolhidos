@@ -45,7 +45,17 @@ export function Vault({ session }: { session: Session }) {
   const [activeView, setActiveView] = useState<"vault" | "goals">("vault");
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const loadCategories = useCallback(async () => {\n    const { data, error } = await supabase.from("audio_categories").select("*").eq("user_id", uid).order("created_at", { ascending: true });\n    if (error) { toast.error("Não foi possível carregar categorias: " + error.message); return; }\n    if (!data?.length) {\n      const seeded = await supabase.from("audio_categories").insert(defaultCategories.map((name) => ({ user_id: uid, name }))).select("*");\n      if (seeded.error) { toast.error("Não foi possível preparar categorias iniciais"); return; }\n      setCategories(seeded.data ?? []); setSelectedAudioCategory(seeded.data?.[0]?.name ?? "");\n    } else { setCategories(data); setSelectedAudioCategory((current) => current || data[0]?.name || ""); }\n  }, [uid]);\n\n  const load = useCallback(async () => {
+  const loadCategories = useCallback(async () => {
+    const { data, error } = await supabase.from("audio_categories").select("*").eq("user_id", uid).order("created_at", { ascending: true });
+    if (error) { toast.error("Não foi possível carregar categorias: " + error.message); return; }
+    if (!data?.length) {
+      const seeded = await supabase.from("audio_categories").insert(defaultCategories.map((name) => ({ user_id: uid, name }))).select("*");
+      if (seeded.error) { toast.error("Não foi possível preparar categorias iniciais"); return; }
+      setCategories(seeded.data ?? []); setSelectedAudioCategory(seeded.data?.[0]?.name ?? "");
+    } else { setCategories(data); setSelectedAudioCategory((current) => current || data[0]?.name || ""); }
+  }, [uid]);
+
+  const load = useCallback(async () => {
     const { data, error } = await supabase.from("items").select("*").order("pinned", { ascending: false }).order("created_at", { ascending: false });
     if (error) toast.error(error.message);
     setItems(data ?? []);
@@ -126,7 +136,39 @@ export function Vault({ session }: { session: Session }) {
     }
   }
 
-  async function updateAudio() {\n    if (!editingAudio || !audioTitle.trim() || !audioCategory) return;\n    const { error } = await supabase.from("items").update({ title: audioTitle.trim(), category: audioCategory, updated_at: new Date().toISOString() }).eq("id", editingAudio.id).eq("user_id", uid);\n    if (error) { toast.error("Não foi possível atualizar o áudio: " + error.message); return; }\n    toast.success("Áudio atualizado"); setEditingAudio(null); await load();\n  }\n\n  async function saveCategory() {\n    const name = categoryName.trim(); if (!name) { toast.error("Digite um nome para a categoria"); return; }\n    if (categories.some((c) => c.name.toLocaleLowerCase() === name.toLocaleLowerCase() && c.id !== editingCategory?.id)) { toast.error("Essa categoria já existe"); return; }\n    const result = editingCategory\n      ? await supabase.from("audio_categories").update({ name }).eq("id", editingCategory.id).eq("user_id", uid)\n      : await supabase.from("audio_categories").insert({ user_id: uid, name });\n    if (result.error) { toast.error("Não foi possível salvar categoria: " + result.error.message); return; }\n    if (editingCategory) { await supabase.from("items").update({ category: name }).eq("user_id", uid).eq("category", editingCategory.name); }\n    setCategoryName(""); setEditingCategory(null); await loadCategories(); await load(); toast.success("Categoria salva");\n  }\n\n  async function deleteCategory(category: AudioCategory) {\n    if (category.name === "Outros") { toast.error("A categoria Outros é necessária como destino"); return; }\n    if (!confirm(`Excluir a categoria \"${category.name}\"? Os áudios serão movidos para Outros.`)) return;\n    const fallback = categories.find((c) => c.name === "Outros");\n    if (!fallback) { toast.error("Crie a categoria Outros antes de excluir esta"); return; }\n    const moved = await supabase.from("items").update({ category: fallback.name }).eq("user_id", uid).eq("category", category.name);\n    if (moved.error) { toast.error("Não foi possível mover os áudios"); return; }\n    const { error } = await supabase.from("audio_categories").delete().eq("id", category.id).eq("user_id", uid);\n    if (error) { toast.error("Não foi possível excluir a categoria"); return; }\n    if (selectedAudioCategory === category.name) setSelectedAudioCategory(fallback.name);\n    if (categoryFilter === category.name) setCategoryFilter("all");\n    await loadCategories(); await load(); toast.success("Categoria excluída");\n  }\n\n  async function remove(i: Item) {
+  async function updateAudio() {
+    if (!editingAudio || !audioTitle.trim() || !audioCategory) return;
+    const { error } = await supabase.from("items").update({ title: audioTitle.trim(), category: audioCategory, updated_at: new Date().toISOString() }).eq("id", editingAudio.id).eq("user_id", uid);
+    if (error) { toast.error("Não foi possível atualizar o áudio: " + error.message); return; }
+    toast.success("Áudio atualizado"); setEditingAudio(null); await load();
+  }
+
+  async function saveCategory() {
+    const name = categoryName.trim(); if (!name) { toast.error("Digite um nome para a categoria"); return; }
+    if (categories.some((c) => c.name.toLocaleLowerCase() === name.toLocaleLowerCase() && c.id !== editingCategory?.id)) { toast.error("Essa categoria já existe"); return; }
+    const result = editingCategory
+      ? await supabase.from("audio_categories").update({ name }).eq("id", editingCategory.id).eq("user_id", uid)
+      : await supabase.from("audio_categories").insert({ user_id: uid, name });
+    if (result.error) { toast.error("Não foi possível salvar categoria: " + result.error.message); return; }
+    if (editingCategory) { await supabase.from("items").update({ category: name }).eq("user_id", uid).eq("category", editingCategory.name); }
+    setCategoryName(""); setEditingCategory(null); await loadCategories(); await load(); toast.success("Categoria salva");
+  }
+
+  async function deleteCategory(category: AudioCategory) {
+    if (category.name === "Outros") { toast.error("A categoria Outros é necessária como destino"); return; }
+    if (!confirm(`Excluir a categoria \"${category.name}\"? Os áudios serão movidos para Outros.`)) return;
+    const fallback = categories.find((c) => c.name === "Outros");
+    if (!fallback) { toast.error("Crie a categoria Outros antes de excluir esta"); return; }
+    const moved = await supabase.from("items").update({ category: fallback.name }).eq("user_id", uid).eq("category", category.name);
+    if (moved.error) { toast.error("Não foi possível mover os áudios"); return; }
+    const { error } = await supabase.from("audio_categories").delete().eq("id", category.id).eq("user_id", uid);
+    if (error) { toast.error("Não foi possível excluir a categoria"); return; }
+    if (selectedAudioCategory === category.name) setSelectedAudioCategory(fallback.name);
+    if (categoryFilter === category.name) setCategoryFilter("all");
+    await loadCategories(); await load(); toast.success("Categoria excluída");
+  }
+
+  async function remove(i: Item) {
     if (!confirm(`Excluir "${i.title}"?`)) return;
     if (i.file_path) await supabase.storage.from("vault").remove([i.file_path]);
     await supabase.from("items").delete().eq("id", i.id);
@@ -144,7 +186,7 @@ export function Vault({ session }: { session: Session }) {
   return (
     <div className="min-h-screen w-full md:pl-64"><aside className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-border/70 bg-[#10151d]/95 p-5 backdrop-blur-2xl transition-transform md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}><Logo /><p className="mb-3 mt-10 px-3 text-[10px] font-bold uppercase tracking-[.22em] text-muted-foreground">Workspace</p><button onClick={() => {setActiveView("vault");setSidebarOpen(false);}} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${activeView === "vault" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><LayoutGrid className="h-4 w-4"/> Meu cofre</button><button onClick={() => {setActiveView("goals");setSidebarOpen(false);}} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold ${activeView === "goals" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><CalendarDays className="h-4 w-4"/> Metas</button><div className="mt-8 flex items-center justify-between px-3"><span className="text-[10px] font-bold uppercase tracking-[.22em] text-muted-foreground">Categorias</span><button onClick={() => {setEditingCategory(null);setCategoryName("");setCategoryManagerOpen(true);}} aria-label="Criar categoria" className="rounded-lg p-1.5 text-muted-foreground hover:bg-white/10 hover:text-primary"><FolderPlus className="h-4 w-4"/></button></div><div className="mt-2 space-y-1">{categories.map((category) => <button key={category.id} onClick={() => {setActiveView("vault");setFilter("audio");setCategoryFilter(category.name);setSidebarOpen(false);}} className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm ${categoryFilter === category.name && filter === "audio" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-white/5"}`}><span className="flex min-w-0 items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full bg-primary/70"/><span className="truncate">{category.name}</span></span><span className="text-xs opacity-60">{items.filter((i)=>i.kind==="audio"&&i.category===category.name).length}</span></button>)}</div><div className="mt-auto border-t border-border/70 pt-4"><p className="truncate px-3 text-xs text-muted-foreground">{session.user.email}</p><button onClick={() => supabase.auth.signOut()} className="mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-muted-foreground hover:bg-white/5"><LogOut className="h-4 w-4"/> Sair</button></div></aside>{sidebarOpen && <button onClick={()=>setSidebarOpen(false)} aria-label="Fechar menu" className="fixed inset-0 z-30 bg-black/60 md:hidden"/>}<main className="mx-auto w-full max-w-7xl px-3 pb-20 pt-3 sm:px-6 sm:pt-6 md:px-8">
       <header className="glass sticky top-2 z-20 flex items-center justify-between gap-2 rounded-2xl px-3 py-2.5 sm:top-4 sm:gap-3 sm:px-4 sm:py-3">
-        <Logo />
+        <div className="md:hidden"><Logo /></div>
         {activeView === "vault" && <div className="relative hidden max-w-sm flex-1 sm:block">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar no cofre…" className="h-10 rounded-xl pl-9" />
@@ -154,10 +196,7 @@ export function Vault({ session }: { session: Session }) {
         </Button>
       </header>
 
-      <nav className="glass sticky top-[4.5rem] z-10 mt-3 flex gap-1 rounded-2xl p-1 sm:static sm:mt-5 sm:gap-2 sm:p-1.5">
-        <button onClick={() => setActiveView("vault")} className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-xs font-semibold transition sm:gap-2 sm:px-4 sm:text-sm ${activeView === "vault" ? "bg-primary text-primary-foreground glow" : "text-muted-foreground hover:text-foreground"}`}><LayoutGrid className="h-4 w-4" /> Meu cofre</button>
-        <button onClick={() => setActiveView("goals")} className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${activeView === "goals" ? "bg-primary text-primary-foreground glow" : "text-muted-foreground hover:text-foreground"}`}><CalendarDays className="h-4 w-4" /> Metas</button>
-      </nav>
+
 
       {activeView === "vault" ? <>
       <div className="relative mt-4 sm:hidden">
@@ -259,7 +298,8 @@ function ItemCard({ item, categoryLabel, onPin, onDelete, onOpen, onEditAudio, c
         </div>
         <div className="flex shrink-0 gap-1">
           {canReorder && <><button onClick={onMoveUp} aria-label="Mover para cima" title="Mover para cima" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent"><ChevronUp className="h-4 w-4" /></button><button onClick={onMoveFirst} aria-label="Mover para o primeiro lugar" title="Mover para o primeiro lugar" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent"><ChevronsUp className="h-4 w-4" /></button></>}
-          {item.kind === "audio" && <button onClick={onEditAudio} aria-label="Editar áudio" title="Editar áudio" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent"><Pencil className="h-4 w-4"/></button>}\n          <button onClick={onPin} aria-label="Fixar" className={`rounded-lg p-1.5 hover:bg-accent ${item.pinned ? "text-primary" : "text-muted-foreground"}`}>
+          {item.kind === "audio" && <button onClick={onEditAudio} aria-label="Editar áudio" title="Editar áudio" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent"><Pencil className="h-4 w-4"/></button>}
+          <button onClick={onPin} aria-label="Fixar" className={`rounded-lg p-1.5 hover:bg-accent ${item.pinned ? "text-primary" : "text-muted-foreground"}`}>
             <Pin className="h-4 w-4" fill={item.pinned ? "currentColor" : "none"} />
           </button>
           <button onClick={onDelete} aria-label="Excluir" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-destructive">
