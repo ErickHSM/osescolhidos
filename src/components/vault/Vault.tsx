@@ -412,7 +412,7 @@ export function Vault({ session }: { session: Session }) {
           ) : pdfItems.map((item) => <PdfCard key={item.id} item={item} onDelete={() => void remove(item)} />)}
         </section>
       </> : <GoalCalendar session={session} />}
-    </main></div>
+    </main>{currentAudio && <div className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-4xl rounded-2xl border border-white/10 bg-[rgba(30,32,36,0.94)] p-3 shadow-2xl backdrop-blur-2xl sm:inset-x-6 sm:bottom-5 sm:p-4"><div className="flex items-center gap-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{currentAudio.title}</p><p className="text-xs text-muted-foreground">{categoryLabel(currentAudio.category)} · Reprodução contínua</p></div>{persistentAudioUrl ? <audio key={currentAudio.id} controls autoPlay src={persistentAudioUrl} onEnded={() => void toggleAudioListened(currentAudio.id, true)} className="w-[min(58%,360px)]" /> : <span className="text-xs text-muted-foreground">Carregando áudio…</span>}<button type="button" aria-label="Fechar player" onClick={() => setCurrentAudio(null)} className="rounded-lg p-2 text-muted-foreground hover:bg-white/10">×</button></div></div>}</div>
   );
 }
 
