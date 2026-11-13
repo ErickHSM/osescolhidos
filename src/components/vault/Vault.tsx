@@ -27,6 +27,7 @@ export function Vault({ session }: { session: Session }) {
   const uid = session.user.id;
   const [items, setItems] = useState<Item[]>([]);
   const [audioOrderIds, setAudioOrderIds] = useState<string[]>([]);
+  const [verseOrderIds, setVerseOrderIds] = useState<string[]>(() => Array.isArray(session.user.user_metadata?.verse_order) ? session.user.user_metadata.verse_order : []);
   const [listenedAudioIds, setListenedAudioIds] = useState<string[]>([]);
   const [currentAudio, setCurrentAudio] = useState<Item | null>(null);
   const persistentAudioUrl = useSignedUrl(currentAudio?.file_path ?? null);
@@ -127,7 +128,11 @@ export function Vault({ session }: { session: Session }) {
     file: items.filter((i) => i.kind === "file").length,
   }), [items]);
 
-  const verseItems = useMemo(() => items.filter((item) => item.kind === "note" && item.category === "Versículos" && (!q.trim() || item.title.toLowerCase().includes(q.trim().toLowerCase()) || (item.content ?? "").toLowerCase().includes(q.trim().toLowerCase()))), [items, q]);
+  const verseItems = useMemo(() => items.filter((item) => item.kind === "note" && item.category === "Versículos").sort((a, b) => {
+    const ai = verseOrderIds.indexOf(a.id), bi = verseOrderIds.indexOf(b.id);
+    if (ai >= 0 || bi >= 0) return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi);
+    return b.created_at.localeCompare(a.created_at);
+  }).filter((item) => !q.trim() || item.title.toLowerCase().includes(q.trim().toLowerCase()) || (item.content ?? "").toLowerCase().includes(q.trim().toLowerCase())), [items, q, verseOrderIds]);
 
   const pdfItems = useMemo(() => items.filter((item) =>
     item.kind === "file" && (item.mime_type === "application/pdf" || item.title.toLowerCase().endsWith(".pdf")) &&
@@ -197,6 +202,26 @@ export function Vault({ session }: { session: Session }) {
   async function togglePin(i: Item) {
     await supabase.from("items").update({ pinned: !i.pinned }).eq("id", i.id);
     load();
+  }
+
+  async function moveVerse(itemId: string, targetId: string) {
+    if (itemId === targetId) return;
+    const ordered = [...verseItems];
+    const from = ordered.findIndex((item) => item.id === itemId);
+    const to = ordered.findIndex((item) => item.id === targetId);
+    if (from < 0 || to < 0) return;
+    const [moved] = ordered.splice(from, 1);
+    ordered.splice(to, 0, moved);
+    const nextIds = ordered.map((item) => item.id);
+    const previousIds = verseOrderIds;
+    setVerseOrderIds(nextIds);
+    const { error } = await supabase.auth.updateUser({ data: { verse_order: nextIds } });
+    if (error) {
+      setVerseOrderIds(previousIds);
+      toast.error("Não foi possível salvar a ordem dos versículos: " + error.message);
+      return;
+    }
+    toast.success("Versículo movido e ordem salva");
   }
 
   async function moveAudio(itemId: string, targetId: string) {
@@ -319,20 +344,28 @@ export function Vault({ session }: { session: Session }) {
   ];
 
   function renderItemCard(i: Item) {
-    const audio = items.filter((x) => x.kind === "audio").sort((a, b) => {
-      const ai = audioOrderIds.indexOf(a.id), bi = audioOrderIds.indexOf(b.id);
-      if (ai >= 0 || bi >= 0) return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi);
-      return a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at);
-    });
-    const index = audio.findIndex((x) => x.id === i.id);
+    const collection = i.kind === "audio"
+      ? items.filter((x) => x.kind === "audio").sort((a, b) => {
+          const ai = audioOrderIds.indexOf(a.id), bi = audioOrderIds.indexOf(b.id);
+          if (ai >= 0 || bi >= 0) return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi);
+          return a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at);
+        })
+      : i.kind === "note" && i.category === "Versículos" ? verseItems : [];
+    const index = collection.findIndex((x) => x.id === i.id);
+    const move = i.kind === "audio" ? moveAudio : moveVerse;
+    const canReorder = !q.trim() && (
+      (i.kind === "audio" && filter === "audio" && categoryFilter === "all") ||
+      (i.kind === "note" && i.category === "Versículos" && activeView === "verses")
+    );
+    const showMoveControls = canReorder;
     return <ItemCard key={i.id} item={i} categoryLabel={categoryLabel(i.category)} listened={listenedAudioIds.includes(i.id)} onToggleListened={(value) => void toggleAudioListened(i.id, value)} onPlayAudio={() => setCurrentAudio(i)} isCurrentAudio={currentAudio?.id === i.id} onPin={() => togglePin(i)} onDelete={() => remove(i)} onEditAudio={() => {setEditingAudio(i);setAudioTitle(i.title);setAudioCategory(i.category || categories[0]?.name || "");}}
       onOpen={() => { if (i.kind === "note") { setEditing(i); setNoteOpen(true); } }}
-      canReorder={filter === "audio" && categoryFilter === "all" && !q.trim() && i.kind === "audio"} showMoveControls={i.kind === "audio"} dragging={draggingId === i.id}
+      canReorder={canReorder} showMoveControls={showMoveControls} dragging={draggingId === i.id}
       onDragStart={() => setDraggingId(i.id)} onDragEnd={() => setDraggingId(null)}
-      onDrop={() => { if (draggingId) void moveAudio(draggingId, i.id); setDraggingId(null); }}
-      onMoveUp={() => { if (index > 0) void moveAudio(i.id, audio[index - 1].id); }}
-      onMoveDown={() => { if (index >= 0 && index < audio.length - 1) void moveAudio(i.id, audio[index + 1].id); }}
-      onMoveFirst={() => { const first = audio[0]; if (first && first.id !== i.id) void moveAudio(i.id, first.id); }} />;
+      onDrop={() => { if (draggingId) void move(draggingId, i.id); setDraggingId(null); }}
+      onMoveUp={() => { if (index > 0) void move(i.id, collection[index - 1].id); }}
+      onMoveDown={() => { if (index >= 0 && index < collection.length - 1) void move(i.id, collection[index + 1].id); }}
+      onMoveFirst={() => { const first = collection[0]; if (first && first.id !== i.id) void move(i.id, first.id); }} />;
   }
 
   return (
