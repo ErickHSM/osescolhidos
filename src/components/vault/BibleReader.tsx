@@ -35,7 +35,7 @@ const bibleTopicIndex: BibleTopicResult[] = [
   { title: "Deus está perto dos que sofrem", reference: "Salmos 34:18", bookSlug: "psalms", chapter: 34, verse: 18, terms: ["tristeza","sofrimento","depressão","dor","consolo","solidão"], explanation: "Lembra que Deus se aproxima de quem está com o coração quebrantado." },
   { title: "Disciplina e domínio próprio", reference: "2 Timóteo 1:7", bookSlug: "2-timothy", chapter: 1, verse: 7, terms: ["disciplina","autocontrole","domínio próprio","medo","coragem","força"], explanation: "Destaca que Deus nos chama a viver com poder, amor e equilíbrio." }
 ];
-const normalizeSearch = (value: string) => value.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").trim();
+const normalizeSearch = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").trim();
 
 export function BibleReader() {
   const [bookSlug, setBookSlug] = useState("genesis");
@@ -148,7 +148,7 @@ export function BibleReader() {
   function searchTopics() {
     const query = normalizeSearch(searchQuery);
     if (!query) { setSearchResults([]); return; }
-    const words = query.split(/\\s+/).filter((word) => word.length > 2);
+    const words = query.split(" ").filter((word) => word.length > 2);
     const ranked = bibleTopicIndex.map((item) => {
       const haystack = normalizeSearch([item.title, item.reference, ...item.terms, item.explanation].join(" "));
       const score = words.reduce((total, word) => total + (haystack.includes(word) ? (item.terms.some((term) => normalizeSearch(term).includes(word)) ? 3 : 1) : 0), 0);
