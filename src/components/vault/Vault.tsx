@@ -26,6 +26,7 @@ export function Vault({ session }: { session: Session }) {
   const uid = session.user.id;
   const [items, setItems] = useState<Item[]>([]);
   const [audioOrderIds, setAudioOrderIds] = useState<string[]>([]);
+  const [listenedAudioIds, setListenedAudioIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
@@ -74,6 +75,8 @@ export function Vault({ session }: { session: Session }) {
     if (error) toast.error(error.message);
     const loadedItems = data ?? [];
     setItems(loadedItems);
+    const savedListened = authData.user?.user_metadata?.listened_audio_ids;
+    setListenedAudioIds(Array.isArray(savedListened) ? savedListened.filter((id: unknown): id is string => typeof id === "string") : []);
     const savedOrder = authData.user?.user_metadata?.audio_order;
     if (Array.isArray(savedOrder)) {
       const validIds = savedOrder.filter((id: unknown): id is string => typeof id === "string" && loadedItems.some((item) => item.id === id));
@@ -195,6 +198,19 @@ export function Vault({ session }: { session: Session }) {
     }
   }
 
+  async function toggleAudioListened(itemId: string, nextValue?: boolean) {
+    const { data, error: userError } = await supabase.auth.getUser();
+    if (userError || !data.user) { toast.error("Não foi possível atualizar o progresso do áudio"); return; }
+    const current = data.user.user_metadata?.listened_audio_ids;
+    const currentIds: string[] = Array.isArray(current) ? current.filter((id: unknown): id is string => typeof id === "string") : [];
+    const shouldListen = nextValue ?? !currentIds.includes(itemId);
+    const nextIds = shouldListen ? [...new Set([...currentIds, itemId])] : currentIds.filter((id) => id !== itemId);
+    const { error } = await supabase.auth.updateUser({ data: { listened_audio_ids: nextIds } });
+    if (error) { toast.error("Não foi possível salvar: " + error.message); return; }
+    setListenedAudioIds(nextIds);
+    toast.success(shouldListen ? "Áudio marcado como escutado" : "Áudio marcado como não escutado");
+  }
+
   async function updateAudio() {
     if (!editingAudio || !audioTitle.trim() || !audioCategory) return;
     const { error } = await supabase.from("items").update({ title: audioTitle.trim(), category: audioCategory, updated_at: new Date().toISOString() }).eq("id", editingAudio.id).eq("user_id", uid);
@@ -314,7 +330,7 @@ export function Vault({ session }: { session: Session }) {
           </div>
         ) : (
           visible.map((i) => (
-            <ItemCard key={i.id} item={i} categoryLabel={categoryLabel(i.category)} onPin={() => togglePin(i)} onDelete={() => remove(i)} onEditAudio={() => {setEditingAudio(i);setAudioTitle(i.title);setAudioCategory(i.category || categories[0]?.name || "");}}
+            <ItemCard key={i.id} item={i} categoryLabel={categoryLabel(i.category)} listened={listenedAudioIds.includes(i.id)} onToggleListened={(value) => void toggleAudioListened(i.id, value)} onPin={() => togglePin(i)} onDelete={() => remove(i)} onEditAudio={() => {setEditingAudio(i);setAudioTitle(i.title);setAudioCategory(i.category || categories[0]?.name || "");}}
               onOpen={() => { if (i.kind === "note") { setEditing(i); setNoteOpen(true); } }}
               canReorder={filter === "audio" && categoryFilter === "all" && !q.trim() && i.kind === "audio"} showMoveControls={i.kind === "audio"} dragging={draggingId === i.id}
               onDragStart={() => setDraggingId(i.id)} onDragEnd={() => setDraggingId(null)}
@@ -358,7 +374,7 @@ function useSignedUrl(path: string | null) {
   return url;
 }
 
-function ItemCard({ item, categoryLabel, onPin, onDelete, onOpen, onEditAudio, canReorder, showMoveControls, dragging, onDragStart, onDragEnd, onDrop, onMoveUp, onMoveDown, onMoveFirst }: { item: Item; categoryLabel: string; onPin: () => void; onDelete: () => void; onOpen: () => void; onEditAudio: () => void; canReorder: boolean; showMoveControls: boolean; dragging: boolean; onDragStart: () => void; onDragEnd: () => void; onDrop: () => void; onMoveUp: () => void; onMoveDown: () => void; onMoveFirst: () => void }) {
+function ItemCard({ item, categoryLabel, listened, onToggleListened, onPin, onDelete, onOpen, onEditAudio, canReorder, showMoveControls, dragging, onDragStart, onDragEnd, onDrop, onMoveUp, onMoveDown, onMoveFirst }: { item: Item; categoryLabel: string; listened: boolean; onToggleListened: (value: boolean) => void; onPin: () => void; onDelete: () => void; onOpen: () => void; onEditAudio: () => void; canReorder: boolean; showMoveControls: boolean; dragging: boolean; onDragStart: () => void; onDragEnd: () => void; onDrop: () => void; onMoveUp: () => void; onMoveDown: () => void; onMoveFirst: () => void }) {
   const url = useSignedUrl(item.kind === "note" ? null : item.file_path);
   const Icon = item.kind === "note" ? StickyNote : item.kind === "audio" ? AudioLines : Paperclip;
   const isImage = item.mime_type?.startsWith("image/");
@@ -387,7 +403,7 @@ function ItemCard({ item, categoryLabel, onPin, onDelete, onOpen, onEditAudio, c
         {item.kind === "note" && (
           <p onClick={onOpen} className="line-clamp-5 cursor-pointer whitespace-pre-wrap text-sm text-muted-foreground">{item.content || "—"}</p>
         )}
-        {item.kind === "audio" && (url ? <audio controls src={url} className="w-full" /> : <div className="h-12 animate-pulse rounded-xl bg-muted" />)}
+        {item.kind === "audio" && <div className="space-y-2">{url ? <audio controls src={url} onEnded={() => onToggleListened(true)} className="w-full" /> : <div className="h-12 animate-pulse rounded-xl bg-muted" />}<button type="button" onClick={() => onToggleListened(!listened)} className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition ${listened ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "border-border text-muted-foreground hover:border-primary/40 hover:text-primary"}`}><span className={`flex h-4 w-4 items-center justify-center rounded-full border ${listened ? "border-emerald-400 bg-emerald-400 text-[#10151d]" : "border-current"}`}>{listened ? "✓" : ""}</span>{listened ? "Escutado" : "Marcar como escutado"}</button></div>}
         {item.kind === "file" && isImage && url && <img src={url} alt={item.title} className="max-h-48 w-full rounded-xl object-cover" />}
       </div>
 
