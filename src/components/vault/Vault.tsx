@@ -108,7 +108,7 @@ export function Vault({ session }: { session: Session }) {
 
   const visible = useMemo(() => {
     const s = q.trim().toLowerCase();
-    const filtered = items.filter((i) => (filter === "all" || i.kind === filter) && (filter !== "audio" || categoryFilter === "all" || i.category === categoryFilter) && (!s || i.title.toLowerCase().includes(s) || (i.content ?? "").toLowerCase().includes(s)));
+    const filtered = items.filter((i) => (filter === "all" || i.kind === filter) && i.category !== "Versículos" && (filter !== "audio" || categoryFilter === "all" || i.category === categoryFilter) && (!s || i.title.toLowerCase().includes(s) || (i.content ?? "").toLowerCase().includes(s)));
     // Reordena os áudios em qualquer visualização (inclusive "Tudo"),
     // mantendo anotações e arquivos nas mesmas posições relativas.
     const positions = new Map(audioOrderIds.map((id, index) => [id, index]));
@@ -122,7 +122,7 @@ export function Vault({ session }: { session: Session }) {
 
   const counts = useMemo(() => ({
     all: items.length,
-    note: items.filter((i) => i.kind === "note").length,
+    note: items.filter((i) => i.kind === "note" && i.category !== "Versículos").length,
     audio: items.filter((i) => i.kind === "audio").length,
     file: items.filter((i) => i.kind === "file").length,
   }), [items]);
@@ -185,7 +185,7 @@ export function Vault({ session }: { session: Session }) {
       const { error } = await supabase.from("items").update({ title, content, ...(activeView === "verses" ? { category: "Versículos" } : {}), updated_at: new Date().toISOString() }).eq("id", editing.id);
       if (error) { toast.error(error.message); return; }
     } else {
-      const { error } = await supabase.from("items").insert({ user_id: uid, kind: "note", title: title || "Sem título", content, category: activeView === "verses" ? "Versículos" : "Anotações" });
+      const { error } = await supabase.from("items").insert({ user_id: uid, kind: "note", title: title || "Sem título", content, ...(activeView === "verses" ? { category: "Versículos" } : {}) });
       if (error) { toast.error(error.message); return; }
     }
     toast.success("Anotação salva");
@@ -436,7 +436,7 @@ export function Vault({ session }: { session: Session }) {
         <section className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {loading ? <p className="text-muted-foreground">Carregando versículos…</p> : verseItems.length === 0 ? <div className="glass col-span-full rounded-2xl p-10 text-center text-muted-foreground"><BookMarked className="mx-auto mb-3 h-9 w-9 opacity-60"/><p className="font-medium text-foreground">Nenhum versículo salvo ainda</p><p className="mt-1 text-sm">Anote uma referência, escreva o versículo e registre sua reflexão.</p></div> : verseItems.map(renderItemCard)}
         </section>
-        <NoteDialog open={noteOpen} onOpenChange={(open) => {setNoteOpen(open);if(!open)setEditing(null);}} item={editing} onSave={saveNote}/>
+        <NoteDialog open={noteOpen} onOpenChange={(open) => {setNoteOpen(open);if(!open)setEditing(null);}} item={editing} onSave={saveNote} isVerse/>
       </> : activeView === "bible" ? <BibleReader /> : <GoalCalendar session={session} />}
     </main>{currentAudio && <div className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-4xl rounded-2xl border border-white/10 bg-[rgba(30,32,36,0.94)] p-3 shadow-2xl backdrop-blur-2xl sm:inset-x-6 sm:bottom-5 sm:p-4"><div className="flex items-center gap-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{currentAudio.title}</p><p className="text-xs text-muted-foreground">{categoryLabel(currentAudio.category)} · Reprodução contínua</p></div>{persistentAudioUrl ? <audio key={currentAudio.id} controls autoPlay src={persistentAudioUrl} onEnded={() => void toggleAudioListened(currentAudio.id, true)} className="w-[min(58%,360px)]" /> : <span className="text-xs text-muted-foreground">Carregando áudio…</span>}<button type="button" aria-label="Fechar player" onClick={() => setCurrentAudio(null)} className="rounded-lg p-2 text-muted-foreground hover:bg-white/10">×</button></div></div>}</div>
   );
@@ -531,16 +531,16 @@ function ItemCard({ item, categoryLabel, listened, onToggleListened, onPlayAudio
   );
 }
 
-function NoteDialog({ open, onOpenChange, item, onSave }: { open: boolean; onOpenChange: (o: boolean) => void; item: Item | null; onSave: (t: string, c: string) => void }) {
+function NoteDialog({ open, onOpenChange, item, onSave, isVerse = false }: { open: boolean; onOpenChange: (o: boolean) => void; item: Item | null; onSave: (t: string, c: string) => void; isVerse?: boolean }) {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   useEffect(() => { if (open) { setTitle(item?.title ?? ""); setContent(item?.content ?? ""); } }, [open, item]);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="glass rounded-2xl sm:max-w-lg">
-        <DialogHeader><DialogTitle>{item ? "Editar anotação" : "Nova anotação"}</DialogTitle></DialogHeader>
-        <Input placeholder="Título" value={title} onChange={(e) => setTitle(e.target.value)} className="rounded-xl" />
-        <Textarea placeholder="Escreva aqui…" value={content} onChange={(e) => setContent(e.target.value)} className="min-h-48 rounded-xl" />
+        <DialogHeader><DialogTitle>{isVerse ? (item ? "Editar versículo" : "Anotar versículo") : (item ? "Editar anotação" : "Nova anotação")}</DialogTitle></DialogHeader>
+        <Input placeholder={isVerse ? "Referência (ex: João 3:16)" : "Título"} value={title} onChange={(e) => setTitle(e.target.value)} className="rounded-xl" />
+        <Textarea placeholder={isVerse ? "Escreva o versículo e sua reflexão…" : "Escreva aqui…"} value={content} onChange={(e) => setContent(e.target.value)} className="min-h-48 rounded-xl" />
         <Button onClick={() => onSave(title, content)} className="glow rounded-xl">Salvar</Button>
       </DialogContent>
     </Dialog>
