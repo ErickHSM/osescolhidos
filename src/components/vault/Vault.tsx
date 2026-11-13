@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { toast } from "sonner";
-import { FileText, Mic, Upload, Search, LogOut, Pin, Trash2, Download, Square, StickyNote, AudioLines, Paperclip, LayoutGrid, GripVertical, ChevronUp, ChevronsUp, CalendarDays, FolderPlus, Pencil, Tags, X, Menu, Headphones, MoreHorizontal } from "lucide-react";
+import { FileText, Mic, Upload, Search, LogOut, Pin, Trash2, Download, Square, StickyNote, AudioLines, Paperclip, LayoutGrid, GripVertical, ChevronUp, ChevronsUp, CalendarDays, FolderPlus, Pencil, Tags, Menu } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { Button } from "@/components/ui/button";
@@ -221,17 +221,17 @@ export function Vault({ session }: { session: Session }) {
         <select aria-label="Categoria dos próximos áudios" value={selectedAudioCategory} onChange={(e) => setSelectedAudioCategory(e.target.value)} className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm sm:max-w-xs">{categories.map((category) => <option key={category.id} value={category.name}>{category.name}</option>)}</select>
       </div>
 
-      <nav className="mt-8 flex gap-2 overflow-x-auto pb-1">
+      <nav className="mt-8 flex flex-wrap gap-2 pb-1">
         {tabs.map((t) => (
           <button key={t.key} onClick={() => setFilter(t.key)}
-            className={`flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition ${filter === t.key ? "glow bg-primary text-primary-foreground" : "glass text-muted-foreground hover:text-foreground"}`}>
+            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition ${filter === t.key ? "glow bg-primary text-primary-foreground" : "glass text-muted-foreground hover:text-foreground"}`}>
             <t.icon className="h-4 w-4" /> {t.label}
             <span className="opacity-70">{counts[t.key]}</span>
           </button>
         ))}
       </nav>
 
-      {filter === "audio" && <><div className="mt-4 flex gap-2 overflow-x-auto pb-1">{[{name:"Todas",id:"all"}, ...categories].map((category) => <button key={category.id} onClick={() => setCategoryFilter(category.id === "all" ? "all" : category.name)} className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition ${categoryFilter === (category.id === "all" ? "all" : category.name) ? "border-primary/50 bg-primary/15 text-primary" : "border-border text-muted-foreground hover:bg-accent"}`}>{category.name}</button>)}</div><p className="mt-2 text-xs text-muted-foreground">Arraste para reorganizar ou use as setas. A ordem fica salva na sua conta. Para reorganizar a lista completa, selecione “Todas” e limpe a busca.</p></>}
+      {filter === "audio" && <><div className="mt-4 flex flex-wrap gap-2 pb-1">{[{name:"Todas",id:"all"}, ...categories].map((category) => <button key={category.id} onClick={() => setCategoryFilter(category.id === "all" ? "all" : category.name)} className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${categoryFilter === (category.id === "all" ? "all" : category.name) ? "border-primary/50 bg-primary/15 text-primary" : "border-border text-muted-foreground hover:bg-accent"}`}>{category.name}</button>)}</div><p className="mt-2 text-xs text-muted-foreground">Arraste para reorganizar ou use as setas. A ordem fica salva na sua conta. Para reorganizar a lista completa, selecione “Todas” e limpe a busca.</p></>}
       <section className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {loading ? (
           <p className="text-muted-foreground">Carregando…</p>
