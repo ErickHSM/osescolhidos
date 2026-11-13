@@ -141,13 +141,16 @@ export function Vault({ session }: { session: Session }) {
     const updated = ordered.map((item, index) => ({ ...item, sort_order: index }));
     setItems((current) => current.map((item) => updated.find((next) => next.id === item.id) ?? item));
     const results = await Promise.all(updated.map((item) =>
-      supabase.from("items").update({ sort_order: item.sort_order }).eq("id", item.id).eq("user_id", uid)
+      supabase.from("items").update({ sort_order: item.sort_order }).eq("id", item.id).eq("user_id", uid).select("id")
     ));
-    if (results.some((result) => result.error)) {
-      toast.error("Não foi possível salvar a ordem dos áudios");
+    const failed = results.find((result) => result.error);
+    const changedCount = results.reduce((total, result) => total + (result.data?.length ?? 0), 0);
+    if (failed?.error || changedCount !== updated.length) {
+      toast.error(failed?.error?.message || "O banco não confirmou a alteração da ordem. Verifique as permissões e a coluna sort_order.");
       await load();
       return;
     }
+    toast.success("Ordem dos áudios atualizada");
   }
 
   async function updateAudio() {
@@ -326,7 +329,7 @@ function ItemCard({ item, categoryLabel, onPin, onDelete, onOpen, onEditAudio, c
           <h3 className={`truncate font-semibold ${item.kind === "note" ? "cursor-pointer" : ""}`} onClick={onOpen}>{item.title}</h3>
         </div>
         <div className="flex shrink-0 gap-1">
-          {showMoveControls && <><button onClick={onMoveUp} aria-label="Mover áudio para cima" title="Mover para cima" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent"><ChevronUp className="h-4 w-4" /></button><button onClick={onMoveDown} aria-label="Mover áudio para baixo" title="Mover para baixo" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent"><ChevronDown className="h-4 w-4" /></button><button onClick={onMoveFirst} aria-label="Mover áudio para o primeiro lugar" title="Mover para o primeiro lugar" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent"><ChevronsUp className="h-4 w-4" /></button></>}
+          {showMoveControls && <><button type="button" onClick={(e) => { e.stopPropagation(); onMoveUp(); }} aria-label="Mover áudio para cima" title="Mover para cima" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent"><ChevronUp className="h-4 w-4" /></button><button type="button" onClick={(e) => { e.stopPropagation(); onMoveDown(); }} aria-label="Mover áudio para baixo" title="Mover para baixo" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent"><ChevronDown className="h-4 w-4" /></button><button type="button" onClick={(e) => { e.stopPropagation(); onMoveFirst(); }} aria-label="Mover áudio para o primeiro lugar" title="Mover para o primeiro lugar" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent"><ChevronsUp className="h-4 w-4" /></button></>}
           {item.kind === "audio" && <button onClick={onEditAudio} aria-label="Editar áudio" title="Editar áudio" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent"><Pencil className="h-4 w-4"/></button>}
           <button onClick={onPin} aria-label="Fixar" className={`rounded-lg p-1.5 hover:bg-accent ${item.pinned ? "text-primary" : "text-muted-foreground"}`}>
             <Pin className="h-4 w-4" fill={item.pinned ? "currentColor" : "none"} />
