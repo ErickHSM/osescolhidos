@@ -90,11 +90,15 @@ export function Vault({ session }: { session: Session }) {
   const visible = useMemo(() => {
     const s = q.trim().toLowerCase();
     const filtered = items.filter((i) => (filter === "all" || i.kind === filter) && (filter !== "audio" || categoryFilter === "all" || i.category === categoryFilter) && (!s || i.title.toLowerCase().includes(s) || (i.content ?? "").toLowerCase().includes(s)));
-    if (filter === "audio") {
-      const positions = new Map(audioOrderIds.map((id, index) => [id, index]));
-      return filtered.sort((a, b) => (positions.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (positions.get(b.id) ?? Number.MAX_SAFE_INTEGER) || a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at));
-    }
-    return filtered;
+    // Reordena os áudios em qualquer visualização (inclusive "Tudo"),
+    // mantendo anotações e arquivos nas mesmas posições relativas.
+    const positions = new Map(audioOrderIds.map((id, index) => [id, index]));
+    const orderedAudio = filtered.filter((item) => item.kind === "audio").sort((a, b) =>
+      (positions.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (positions.get(b.id) ?? Number.MAX_SAFE_INTEGER) ||
+      a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at)
+    );
+    let audioIndex = 0;
+    return filtered.map((item) => item.kind === "audio" ? orderedAudio[audioIndex++] : item);
   }, [items, filter, q, categoryFilter, audioOrderIds]);
 
   const counts = useMemo(() => ({
@@ -317,7 +321,7 @@ export function Vault({ session }: { session: Session }) {
               onDrop={() => { if (draggingId) void moveAudio(draggingId, i.id); setDraggingId(null); }}
               onMoveUp={() => { const audio = items.filter((x) => x.kind === "audio").sort((a, b) => { const ai = audioOrderIds.indexOf(a.id); const bi = audioOrderIds.indexOf(b.id); if (ai >= 0 || bi >= 0) return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi); return a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at); }); const index = audio.findIndex((x) => x.id === i.id); if (index > 0) void moveAudio(i.id, audio[index - 1].id); }}
               onMoveDown={() => { const audio = items.filter((x) => x.kind === "audio").sort((a, b) => { const ai = audioOrderIds.indexOf(a.id); const bi = audioOrderIds.indexOf(b.id); if (ai >= 0 || bi >= 0) return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi); return a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at); }); const index = audio.findIndex((x) => x.id === i.id); if (index >= 0 && index < audio.length - 1) void moveAudio(i.id, audio[index + 1].id); }}
-              onMoveFirst={() => { const first = items.filter((x) => x.kind === "audio").sort((a, b) => a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at))[0]; if (first && first.id !== i.id) void moveAudio(i.id, first.id); }} />
+              onMoveFirst={() => { const audio = items.filter((x) => x.kind === "audio").sort((a, b) => { const ai = audioOrderIds.indexOf(a.id); const bi = audioOrderIds.indexOf(b.id); if (ai >= 0 || bi >= 0) return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi); return a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at); }); const first = audio[0]; if (first && first.id !== i.id) void moveAudio(i.id, first.id); }} />
           ))
         )}
       </section>
