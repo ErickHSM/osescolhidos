@@ -50,7 +50,9 @@ export function BibleReader() {
   const [coverOpening, setCoverOpening] = useState(false);
   const [speechStatus, setSpeechStatus] = useState<"idle" | "playing" | "paused">("idle");
   const [speechRate, setSpeechRate] = useState(0.95);
-  const [speechPitch, setSpeechPitch] = useState(0.65);
+  const [speechPitch, setSpeechPitch] = useState(0.78);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoiceName, setSelectedVoiceName] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<BibleTopicResult[]>([]);
   const [lastProgress, setLastProgress] = useState<{ bookSlug: string; chapter: number; pageIndex: number; updatedAt?: string } | null>(null);
@@ -86,6 +88,21 @@ export function BibleReader() {
     setLastProgress(progress);
     supabase.auth.updateUser({ data: { bible_progress: progress } });
   }, [bookSlug, chapter, pageIndex, loading, data]);
+  useEffect(() => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    const loadVoices = () => {
+      const voices = window.speechSynthesis.getVoices();
+      const portuguese = voices.filter((voice) => voice.lang.toLowerCase().startsWith("pt"));
+      setAvailableVoices(portuguese);
+      if (!selectedVoiceName && portuguese.length) {
+        const masculineCandidate = portuguese.find((voice) => /antonio|antônio|daniel|ricardo|male|masculino|homem/i.test(voice.name));
+        setSelectedVoiceName((masculineCandidate ?? portuguese.find((voice) => voice.lang.toLowerCase() === "pt-br") ?? portuguese[0]).name);
+      }
+    };
+    loadVoices();
+    window.speechSynthesis.addEventListener("voiceschanged", loadVoices);
+    return () => window.speechSynthesis.removeEventListener("voiceschanged", loadVoices);
+  }, [selectedVoiceName]);
   useEffect(() => () => {
     if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
   }, []);
@@ -110,7 +127,7 @@ export function BibleReader() {
     utterance.rate = speechRate;
     utterance.pitch = speechPitch;
     const voices = window.speechSynthesis.getVoices();
-    const voice = voices.find((item) => item.lang.toLowerCase() === "pt-br") || voices.find((item) => item.lang.toLowerCase().startsWith("pt"));
+    const voice = voices.find((item) => item.name === selectedVoiceName) || voices.find((item) => item.lang.toLowerCase() === "pt-br") || voices.find((item) => item.lang.toLowerCase().startsWith("pt"));
     if (voice) utterance.voice = voice;
     utterance.onend = () => setSpeechStatus("idle");
     utterance.onerror = () => setSpeechStatus("idle");
@@ -233,7 +250,7 @@ export function BibleReader() {
       {lastProgress && savedBook && <section className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-3"><div className="flex items-center gap-2"><BookmarkCheck className="h-5 w-5 text-primary"/><div><p className="text-sm font-semibold">Sua última leitura</p><p className="text-xs text-muted-foreground">{savedBook.name} {lastProgress.chapter} · página {lastProgress.pageIndex + 1}</p></div></div><Button type="button" size="sm" variant="outline" className="rounded-xl" onClick={() => { setBookSlug(lastProgress.bookSlug); setChapter(lastProgress.chapter); setPageIndex(lastProgress.pageIndex); setIsCoverOpen(true); }}>Continuar leitura</Button></section>}
       {isCoverOpen && <div className="mx-auto mb-4 flex max-w-5xl flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/20 p-3 text-[#f5e6cd]">
           <div className="flex items-center gap-2"><Volume2 className="h-5 w-5 text-[#d9bd82]"/><div><p className="text-sm font-semibold">Ouvir a Bíblia</p><p className="text-xs text-[#e8d6b8]/75">{speechStatus === "playing" ? "Lendo este capítulo…" : speechStatus === "paused" ? "Leitura pausada" : "Escute este capítulo em voz alta"}</p></div></div>
-          <div className="flex flex-wrap items-center gap-2"><label className="flex items-center gap-2 text-xs">Voz<select aria-label="Tom da voz" value={speechPitch} onChange={(event) => setSpeechPitch(Number(event.target.value))} className="rounded-lg border border-white/15 bg-[#29231d] px-2 py-1.5 text-[#f5e6cd]"><option value={0.5}>Bem grave</option><option value={0.65}>Grave</option><option value={0.8}>Média-grave</option><option value={1}>Natural</option></select></label><label className="flex items-center gap-2 text-xs">Velocidade<select aria-label="Velocidade da leitura" value={speechRate} onChange={(event) => setSpeechRate(Number(event.target.value))} className="rounded-lg border border-white/15 bg-[#29231d] px-2 py-1.5 text-[#f5e6cd]"><option value={0.8}>0,8×</option><option value={0.95}>1×</option><option value={1.2}>1,2×</option><option value={1.5}>1,5×</option></select></label>
+          <div className="flex flex-wrap items-center gap-2"><label className="flex items-center gap-2 text-xs">Voz<select aria-label="Voz em português" value={selectedVoiceName} onChange={(event) => setSelectedVoiceName(event.target.value)} className="max-w-[190px] rounded-lg border border-white/15 bg-[#29231d] px-2 py-1.5 text-[#f5e6cd]"><option value="">Automática</option>{availableVoices.map((voice) => <option key={voice.name} value={voice.name}>{voice.name}{voice.lang.toLowerCase() === "pt-br" ? " · Brasil" : ""}</option>)}</select></label><label className="flex items-center gap-2 text-xs">Gravidade<select aria-label="Gravidade da voz" value={speechPitch} onChange={(event) => setSpeechPitch(Number(event.target.value))} className="rounded-lg border border-white/15 bg-[#29231d] px-2 py-1.5 text-[#f5e6cd]"><option value={0.65}>Muito grave</option><option value={0.78}>Grave</option><option value={0.9}>Média-grave</option><option value={1}>Natural</option></select></label><label className="flex items-center gap-2 text-xs">Velocidade<select aria-label="Velocidade da leitura" value={speechRate} onChange={(event) => setSpeechRate(Number(event.target.value))} className="rounded-lg border border-white/15 bg-[#29231d] px-2 py-1.5 text-[#f5e6cd]"><option value={0.8}>0,8×</option><option value={0.95}>1×</option><option value={1.2}>1,2×</option><option value={1.5}>1,5×</option></select></label>
           <Button type="button" size="sm" onClick={toggleReading} disabled={loading || !!error || !data?.verses?.length} className="rounded-xl bg-[#b58b4c] text-[#21180e] hover:bg-[#c99d5a]">{speechStatus === "playing" ? <><Pause className="mr-1 h-4 w-4"/> Pausar</> : speechStatus === "paused" ? <><Play className="mr-1 h-4 w-4"/> Continuar</> : <><Play className="mr-1 h-4 w-4"/> Ouvir capítulo</>}</Button>
           {speechStatus !== "idle" && <Button type="button" size="sm" variant="outline" onClick={stopReading} className="rounded-xl border-white/20 text-[#f5e6cd] hover:bg-white/10"><Square className="mr-1 h-3.5 w-3.5"/> Parar</Button>}</div></div>}
         <div className="bible-book mx-auto max-w-5xl rounded-[22px] p-3 sm:p-5">
