@@ -25,6 +25,7 @@ const fmtDate = (d: string) =>
 export function Vault({ session }: { session: Session }) {
   const uid = session.user.id;
   const [items, setItems] = useState<Item[]>([]);
+  const [audioOrderIds, setAudioOrderIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
@@ -66,9 +67,21 @@ export function Vault({ session }: { session: Session }) {
   }, []);
 
   const load = useCallback(async () => {
-    const { data, error } = await supabase.from("items").select("*").order("pinned", { ascending: false }).order("created_at", { ascending: false });
+    const [{ data, error }, { data: authData }] = await Promise.all([
+      supabase.from("items").select("*").order("pinned", { ascending: false }).order("created_at", { ascending: false }),
+      supabase.auth.getUser(),
+    ]);
     if (error) toast.error(error.message);
-    setItems(data ?? []);
+    const loadedItems = data ?? [];
+    setItems(loadedItems);
+    const savedOrder = authData.user?.user_metadata?.audio_order;
+    if (Array.isArray(savedOrder)) {
+      const validIds = savedOrder.filter((id: unknown): id is string => typeof id === "string" && loadedItems.some((item) => item.id === id));
+      const missingIds = loadedItems.filter((item) => item.kind === "audio" && !validIds.includes(item.id)).map((item) => item.id);
+      setAudioOrderIds([...validIds, ...missingIds]);
+    } else {
+      setAudioOrderIds(loadedItems.filter((item) => item.kind === "audio").sort((a, b) => a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at)).map((item) => item.id));
+    }
     setLoading(false);
   }, []);
 
@@ -77,9 +90,12 @@ export function Vault({ session }: { session: Session }) {
   const visible = useMemo(() => {
     const s = q.trim().toLowerCase();
     const filtered = items.filter((i) => (filter === "all" || i.kind === filter) && (filter !== "audio" || categoryFilter === "all" || i.category === categoryFilter) && (!s || i.title.toLowerCase().includes(s) || (i.content ?? "").toLowerCase().includes(s)));
-    if (filter === "audio") return filtered.sort((a, b) => a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at));
+    if (filter === "audio") {
+      const positions = new Map(audioOrderIds.map((id, index) => [id, index]));
+      return filtered.sort((a, b) => (positions.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (positions.get(b.id) ?? Number.MAX_SAFE_INTEGER) || a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at));
+    }
     return filtered;
-  }, [items, filter, q, categoryFilter]);
+  }, [items, filter, q, categoryFilter, audioOrderIds]);
 
   const counts = useMemo(() => ({
     all: items.length,
@@ -132,25 +148,47 @@ export function Vault({ session }: { session: Session }) {
 
   async function moveAudio(itemId: string, targetId: string) {
     if (itemId === targetId) return;
-    const ordered = items.filter((item) => item.kind === "audio").sort((a, b) => a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at));
+    const audio = items.filter((item) => item.kind === "audio");
+    const ordered = [...audio].sort((a, b) => {
+      const ai = audioOrderIds.indexOf(a.id);
+      const bi = audioOrderIds.indexOf(b.id);
+      if (ai >= 0 || bi >= 0) return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi);
+      return a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at);
+    });
     const from = ordered.findIndex((item) => item.id === itemId);
     const to = ordered.findIndex((item) => item.id === targetId);
     if (from < 0 || to < 0) return;
     const [moved] = ordered.splice(from, 1);
     ordered.splice(to, 0, moved);
-    const updated = ordered.map((item, index) => ({ ...item, sort_order: index }));
-    setItems((current) => current.map((item) => updated.find((next) => next.id === item.id) ?? item));
-    const results = await Promise.all(updated.map((item) =>
-      supabase.from("items").update({ sort_order: item.sort_order }).eq("id", item.id).eq("user_id", uid).select("id")
-    ));
-    const failed = results.find((result) => result.error);
-    const changedCount = results.reduce((total, result) => total + (result.data?.length ?? 0), 0);
-    if (failed?.error || changedCount !== updated.length) {
-      toast.error(failed?.error?.message || "O banco não confirmou a alteração da ordem. Verifique as permissões e a coluna sort_order.");
+    const nextIds = ordered.map((item) => item.id);
+    const previousIds = audioOrderIds;
+    setAudioOrderIds(nextIds);
+    setItems((current) => current.map((item) => {
+      const position = nextIds.indexOf(item.id);
+      return position >= 0 ? { ...item, sort_order: position } : item;
+    }));
+
+    // Persist the manual order in the signed-in user's metadata so it also works
+    // when the database's optional sort_order column/policies are not configured.
+    const { error: metadataError } = await supabase.auth.updateUser({ data: { audio_order: nextIds } });
+    if (metadataError) {
+      setAudioOrderIds(previousIds);
+      toast.error("Não foi possível salvar a ordem: " + metadataError.message);
       await load();
       return;
     }
-    toast.success("Ordem dos áudios atualizada");
+
+    const results = await Promise.all(ordered.map((item, index) =>
+      supabase.from("items").update({ sort_order: index }).eq("id", item.id).eq("user_id", uid)
+    ));
+    const failed = results.find((result) => result.error);
+    if (failed?.error) {
+      // Metadata remains the source of truth for display order; report the
+      // database issue without undoing the successfully saved order.
+      toast.warning("A ordem foi salva na sua conta, mas o banco não atualizou a coluna auxiliar: " + failed.error.message);
+    } else {
+      toast.success("Áudio movido e ordem salva");
+    }
   }
 
   async function updateAudio() {
@@ -277,8 +315,8 @@ export function Vault({ session }: { session: Session }) {
               canReorder={filter === "audio" && categoryFilter === "all" && !q.trim() && i.kind === "audio"} showMoveControls={i.kind === "audio"} dragging={draggingId === i.id}
               onDragStart={() => setDraggingId(i.id)} onDragEnd={() => setDraggingId(null)}
               onDrop={() => { if (draggingId) void moveAudio(draggingId, i.id); setDraggingId(null); }}
-              onMoveUp={() => { const audio = items.filter((x) => x.kind === "audio").sort((a, b) => a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at)); const index = audio.findIndex((x) => x.id === i.id); if (index > 0) void moveAudio(i.id, audio[index - 1].id); }}
-              onMoveDown={() => { const audio = items.filter((x) => x.kind === "audio").sort((a, b) => a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at)); const index = audio.findIndex((x) => x.id === i.id); if (index >= 0 && index < audio.length - 1) void moveAudio(i.id, audio[index + 1].id); }}
+              onMoveUp={() => { const audio = items.filter((x) => x.kind === "audio").sort((a, b) => { const ai = audioOrderIds.indexOf(a.id); const bi = audioOrderIds.indexOf(b.id); if (ai >= 0 || bi >= 0) return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi); return a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at); }); const index = audio.findIndex((x) => x.id === i.id); if (index > 0) void moveAudio(i.id, audio[index - 1].id); }}
+              onMoveDown={() => { const audio = items.filter((x) => x.kind === "audio").sort((a, b) => { const ai = audioOrderIds.indexOf(a.id); const bi = audioOrderIds.indexOf(b.id); if (ai >= 0 || bi >= 0) return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi); return a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at); }); const index = audio.findIndex((x) => x.id === i.id); if (index >= 0 && index < audio.length - 1) void moveAudio(i.id, audio[index + 1].id); }}
               onMoveFirst={() => { const first = items.filter((x) => x.kind === "audio").sort((a, b) => a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at))[0]; if (first && first.id !== i.id) void moveAudio(i.id, first.id); }} />
           ))
         )}
